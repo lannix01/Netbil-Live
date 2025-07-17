@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    display: flex;
+}
+
+.main-sidebar {
+    width: 250px;
+    min-height: 100vh;
+    position: fixed;
+    background-color: #f8f9fa;
+}
+
+#app {
+    margin-left: 250px;
+    width: calc(100% - 250px);
+}
