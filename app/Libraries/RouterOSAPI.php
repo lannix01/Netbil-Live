@@ -427,4 +427,96 @@ class RouterOSAPI {
     {
         $this->disconnect();
     }
+
+
+/* ============================================================
+   HOTSPOT PROFILE CREATE / UPDATE
+   ============================================================ */
+public function createHotspotProfile(string $ip, string $login, string $password, string $name, ?string $rateLimit = null, ?int $sessionTimeout = null)
+{
+    if (!$this->connect($ip, $login, $password)) return false;
+
+    // Check if profile exists
+    $this->write('/ip/hotspot/user/profile/print', false);
+    $this->write('?name=' . $name, true);
+    $res = $this->read();
+
+    if (!empty($res) && isset($res[0]['.id'])) {
+        // UPDATE
+        $this->write('/ip/hotspot/user/profile/set', false);
+        $this->write('=.id=' . $res[0]['.id'], false);
+        if ($rateLimit) $this->write('=rate-limit=' . $rateLimit, false);
+        if ($sessionTimeout) $this->write('=session-timeout=' . $sessionTimeout, true);
+    } else {
+        // CREATE
+        $this->write('/ip/hotspot/user/profile/add', false);
+        $this->write('=name=' . $name, false);
+        if ($rateLimit) $this->write('=rate-limit=' . $rateLimit, false);
+        if ($sessionTimeout) $this->write('=session-timeout=' . $sessionTimeout, true);
+    }
+
+    $this->disconnect();
+    return true;
+}
+
+
+/* ============================================================
+   ADD HOTSPOT USER
+   ============================================================ */
+public function addHotspotUser(string $ip, string $login, string $password, string $username, string $pass, ?string $profile = null, ?int $expiresInSeconds = null)
+{
+    if (!$this->connect($ip, $login, $password)) return false;
+
+    $this->write('/ip/hotspot/user/add', false);
+    $this->write('=name=' . $username, false);
+    $this->write('=password=' . $pass, false);
+    if ($profile) $this->write('=profile=' . $profile, false);
+
+    if ($expiresInSeconds) {
+        $expiry = gmdate('Y-m-d\TH:i:s', time() + $expiresInSeconds);
+        $this->write('=comment=expires:' . $expiry, false);
+    }
+
+    $this->write(true);
+    $this->disconnect();
+    return true;
+}
+
+
+/* ============================================================
+   ADD PPPoE SECRET
+   ============================================================ */
+public function addPppoeSecret(string $ip, string $login, string $password, string $name, string $pass, ?string $profile = null)
+{
+    if (!$this->connect($ip, $login, $password)) return false;
+
+    $this->write('/ppp/secret/add', false);
+    $this->write('=name=' . $name, false);
+    $this->write('=password=' . $pass, false);
+    if ($profile) $this->write('=profile=' . $profile, false);
+    $this->write(true);
+
+    $this->disconnect();
+    return true;
+}
+
+
+// set user profile (assign existing hotspot active session to profile)
+public function setHotspotUserProfileByName(string $username, string $profile)
+{
+    if(!$this->connect()) return false;
+    // find item id
+    $this->api->write('/ip/hotspot/active/print', false);
+    $this->api->write('?user='.$username, true);
+    $res = $this->api->read();
+    if(!empty($res)) {
+        $id = $res[0]['.id'];
+        $this->api->write('/ip/hotspot/user/set', false);
+        $this->api->write('=.id='.$id, false);
+        $this->api->write('=profile='.$profile, true);
+    }
+    $this->disconnect();
+    return true;
+}
+
 }

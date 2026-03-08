@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="pragma" content="no-cache" />
+    <meta http-equiv="expires" content="-1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetBil Captive Portal</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        :root {
+            --primary: #10b981;
+            --primary-dark: #059669;
+            --text: #1f2937;
+            --text-light: #6b7280;
+        }
+
+        body {
+            background-color: #f0f4f8;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .card {
+            background: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .logo {
+            max-width: 250px;
+            margin: 0 auto 20px;
+            transition: transform 0.3s;
+        }
+
+        .card form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .card label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+        }
+
+        .card input[type="text"],
+        .card input[type="password"] {
+            border: none;
+            height: 15px;
+            outline: none;
+            flex: 1;
+        }
+
+        .card input[type="submit"] {
+            background-color: var(--primary);
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            padding: 10px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .card input[type="submit"]:hover {
+            background-color: var(--primary-dark);
+        }
+
+        .info {
+            font-size: 14px;
+            color: var(--text);
+        }
+
+        .info.alert {
+            color: rgb(209, 13, 13);
+        }
+
+        /* Hotspot packages section */
+        .packages {
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .package-card {
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 10px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            transition: all 0.2s ease;
+        }
+
+        .package-card:hover {
+            background: #d1fae5;
+            border-color: var(--primary);
+        }
+
+        .mode-select {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .mode-select button {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background: #e5f7f1;
+            color: var(--text);
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .mode-select button.active {
+            background-color: var(--primary);
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <img class="logo" src="bryson.png" alt="Logo" />
+
+        <div class="mode-select">
+            <button id="hotspot-btn">Hotspot</button>
+            <button id="metered-btn" class="active">Metered</button>
+        </div>
+
+        <!-- Hotspot Packages -->
+        <div class="packages" id="hotspot-packages">
+            @forelse($packages as $package)
+            <div class="package-card" data-id="{{ $package->id }}">
+                <span>{{ $package->name }} - {{ $package->duration }} hrs - KES {{ number_format($package->price,2) }}</span>
+                <span>→</span>
+            </div>
+            @empty
+            <p class="info alert">No hotspot packages available.</p>
+            @endforelse
+        </div>
+
+        <!-- Metered Login -->
+        <form name="login" action="{{ route('captive.metered.login') }}" method="post">
+            @csrf
+            <input type="hidden" name="dst" value="$(link-orig)" />
+            <input type="hidden" name="popup" value="true" />
+
+            <p class="info $(if error)alert$(endif)">
+                Enter USERNAME and PASSWORD provided by ISP to connect.
+                $(if error)$(error)$(endif)
+            </p>
+
+            <label>
+                <img class="ico" src="img/user.svg" alt="#" />
+                <input name="username" type="text" value="$(username)" placeholder="Username" />
+            </label>
+
+            <label>
+                <img class="ico" src="img/password.svg" alt="#" />
+                <input name="password" type="password" placeholder="Password" />
+            </label>
+
+            <input type="submit" value="Connect" />
+        </form>
+
+        <p class="info bt">Powered by NetBil Billing System</p>
+    </div>
+
+    <script>
+        const hotspotBtn = document.getElementById('hotspot-btn');
+        const meteredBtn = document.getElementById('metered-btn');
+        const hotspotDiv = document.getElementById('hotspot-packages');
+        const meteredForm = document.querySelector('form[name="login"]');
+
+        hotspotBtn.addEventListener('click', () => {
+            hotspotBtn.classList.add('active');
+            meteredBtn.classList.remove('active');
+            hotspotDiv.style.display = 'flex';
+            meteredForm.style.display = 'none';
+        });
+
+        meteredBtn.addEventListener('click', () => {
+            meteredBtn.classList.add('active');
+            hotspotBtn.classList.remove('active');
+            hotspotDiv.style.display = 'none';
+            meteredForm.style.display = 'flex';
+        });
+
+        // Hotspot package click (placeholder for next step)
+        document.querySelectorAll('.package-card').forEach(card => {
+            card.addEventListener('click', () => {
+                const packageId = card.dataset.id;
+                alert("Package selected: " + packageId + ". Implementation coming next.");
+            });
+        });
+    </script>
+</body>
+</html>

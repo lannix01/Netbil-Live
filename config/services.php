@@ -28,6 +28,22 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'sms' => [
+        'amazons' => [
+            'base_url' => env('AMAZONS_SMS_BASE_URL'),
+            'api_key' => env('AMAZONS_SMS_API_KEY'),
+            'partner_id' => env('AMAZONS_SMS_PARTNER_ID'),
+            'sender' => env('AMAZONS_SMS_SENDER'),
+         ],
+
+         'advanta' => [
+            'base_url' => env('ADVANTA_SMS_BASE_URL'),
+            'api_key' => env('ADVANTA_SMS_API_KEY'),
+            'partner_id' => env('ADVANTA_SMS_PARTNER_ID'),
+            'sender' => env('ADVANTA_SMS_SENDER'),
+        ],
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

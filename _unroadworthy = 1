@@ -1,0 +1,15 @@
+[90m= [39m[34;4mApp\Modules\PettyCash\Models\Bike[39;24m {#5406
+    [34mid[39m: [35m1[39m,
+    [34mplate_no[39m: "[32mKDR 730S[39m",
+    [34mlast_service_date[39m: [36mnull[39m,
+    [34mnext_service_due_date[39m: [36mnull[39m,
+    [34mmodel[39m: "[32mFielder[39m",
+    [34mstatus[39m: "[32mActive[39m",
+    [34mcreated_at[39m: [36mnull[39m,
+    [34mupdated_at[39m: "[32m2026-01-22 11:59:02[39m",
+    [34mis_unroadworthy[39m: [35m0[39m,
+    [34munroadworthy_notes[39m: [36mnull[39m,
+    [34munroadworthy_at[39m: [36mnull[39m,
+    [34mflagged_at[39m: [36mnull[39m,
+  }
+

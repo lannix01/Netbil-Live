@@ -1,0 +1,51 @@
+# First, navigate to your Laravel project root
+cd ~/Marcep/netbil
+
+# Create the directory structure for Inventory module
+# Note: Since Inventory folder already exists, we'll create subdirectories
+mkdir -p app/Modules/Inventory/{routes,Models,Policies,Providers}
+mkdir -p app/Modules/Inventory/Http/Controllers/Inventory
+mkdir -p app/Modules/Inventory/Database/{Migrations,Seeders}
+
+# Create the service provider file
+touch app/Modules/Inventory/Providers/InventoryServiceProvider.php
+
+# Create the policy file
+touch app/Modules/Inventory/Policies/InventoryPolicy.php
+
+# Create the routes file
+touch app/Modules/Inventory/routes/web.php
+
+# Create model files
+touch app/Modules/Inventory/Models/InventoryDepartment.php
+touch app/Modules/Inventory/Models/InventoryItemGroup.php
+touch app/Modules/Inventory/Models/InventoryItem.php
+touch app/Modules/Inventory/Models/InventoryStockReceipt.php
+touch app/Modules/Inventory/Models/InventoryStockReceiptLine.php
+touch app/Modules/Inventory/Models/InventoryTechnicianItemAssignment.php
+touch app/Modules/Inventory/Models/InventoryItemDeployment.php
+touch app/Modules/Inventory/Models/InventoryLog.php
+
+# Create controller files
+touch app/Modules/Inventory/Http/Controllers/Inventory/ItemGroupController.php
+touch app/Modules/Inventory/Http/Controllers/Inventory/ItemController.php
+touch app/Modules/Inventory/Http/Controllers/Inventory/StockReceiptController.php
+touch app/Modules/Inventory/Http/Controllers/Inventory/AssignmentController.php
+touch app/Modules/Inventory/Http/Controllers/Inventory/TechnicianInventoryController.php
+touch app/Modules/Inventory/Http/Controllers/Inventory/DeploymentController.php
+touch app/Modules/Inventory/Http/Controllers/Inventory/LogController.php
+
+# Create seeder file
+touch app/Modules/Inventory/Database/Seeders/InventorySeeder.php
+
+# Create migration files - using current date prefix
+# Note: The year 2026 in your example seems like a typo, using 2024 instead
+touch app/Modules/Inventory/Database/Migrations/2024_01_24_000001_create_inventory_departments_table.php
+touch app/Modules/Inventory/Database/Migrations/2024_01_24_000002_create_inventory_item_groups_table.php
+touch app/Modules/Inventory/Database/Migrations/2024_01_24_000003_create_inventory_items_table.php
+touch app/Modules/Inventory/Database/Migrations/2024_01_24_000004_create_inventory_stock_receipts_table.php
+touch app/Modules/Inventory/Database/Migrations/2024_01_24_000005_create_inventory_stock_receipt_lines_table.php
+touch app/Modules/Inventory/Database/Migrations/2024_01_24_000006_create_inventory_technician_item_assignments_table.php
+touch app/Modules/Inventory/Database/Migrations/2024_01_24_000007_create_inventory_item_deployments_table.php
+touch app/Modules/Inventory/Database/Migrations/2024_01_24_000008_create_inventory_logs_table.php
+touch app/Modules/Inventory/Database/Migrations/2024_01_24_000009_add_inventory_fields_to_users_table.php

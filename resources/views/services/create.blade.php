@@ -2,57 +2,167 @@
 
 @section('content')
 <div class="container">
-    <h2>Assign New Service</h2>
+    <h3 class="mb-3">Create Plan</h3>
 
-    <form method="POST" action="{{ route('services.store') }}">
+    @if($errors->any())
+        <div class="alert alert-danger">
+            <ul class="mb-0">
+                @foreach($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
+    <form method="POST" action="{{ route('services.store') }}" class="card shadow-sm p-3">
         @csrf
 
-        <div class="mb-3">
-            <label>Customer</label>
-            <select name="customer_id" class="form-control" required>
-                <option value="">-- Select Customer --</option>
-                @foreach($customers as $c)
-                    <option value="{{ $c->id }}">{{ $c->name }}</option>
-                @endforeach
-            </select>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Plan Name</label>
+                <input type="text" name="name" class="form-control" value="{{ old('name') }}" required>
+            </div>
+
+            @if($schema['has_category'])
+                <div class="col-md-6">
+                    <label class="form-label">Category</label>
+                    <select name="category" id="planCategory" class="form-select" required>
+                        <option value="hotspot" @selected(old('category', 'hotspot') === 'hotspot')>Hotspot</option>
+                        <option value="metered" @selected(old('category') === 'metered')>Metered</option>
+                    </select>
+                </div>
+            @endif
+
+            @if($schema['has_profile_column'])
+                <div class="col-md-6 field-profile">
+                    <label class="form-label">MikroTik Profile</label>
+                    <input type="text" name="profile" class="form-control" value="{{ old('profile') }}" placeholder="e.g. plan_5mbps">
+                    <small class="text-muted">Leave blank only if auto-create profile is enabled.</small>
+                </div>
+            @endif
+
+            @if($schema['has_speed'])
+                <div class="col-md-4">
+                    <label class="form-label">Speed</label>
+                    <input type="text" name="speed" class="form-control" value="{{ old('speed') }}" placeholder="e.g. 5M/5M" required>
+                    <small class="text-muted">Required for both hotspot and metered plans.</small>
+                </div>
+            @endif
+
+            @if($schema['has_rate_limit'])
+                <div class="col-md-4 field-hotspot">
+                    <label class="form-label">Rate Limit</label>
+                    <input type="text" name="rate_limit" class="form-control" value="{{ old('rate_limit') }}" placeholder="e.g. 5M/5M">
+                </div>
+            @endif
+
+            @if($schema['has_price'])
+                <div class="col-md-4">
+                    <label class="form-label" id="planPriceLabel">Price (KES)</label>
+                    <input type="number" step="0.01" min="0" name="price" class="form-control" value="{{ old('price', 0) }}" required>
+                    <small class="text-muted" id="planPriceHint">Set category to determine whether pricing is per package or per MB.</small>
+                </div>
+            @endif
+
+            @if($schema['has_duration_minutes'])
+                <div class="col-md-4 field-hotspot">
+                    <label class="form-label">Duration (Minutes)</label>
+                    <input type="number" min="1" name="duration_minutes" class="form-control" value="{{ old('duration_minutes', 60) }}">
+                </div>
+            @endif
+
+            @if($schema['has_duration'])
+                <div class="col-md-4 field-hotspot">
+                    <label class="form-label">Duration (Hours)</label>
+                    <input type="number" min="1" name="duration" class="form-control" value="{{ old('duration', 1) }}">
+                </div>
+            @endif
+
+            @if($schema['has_data_limit'])
+                <div class="col-md-4 field-hotspot">
+                    <label class="form-label">Data Limit (MB)</label>
+                    <input type="number" step="0.01" min="0" name="data_limit_mb" class="form-control" value="{{ old('data_limit_mb') }}" placeholder="Leave blank for unlimited">
+                </div>
+            @endif
+
+            @if($schema['has_status'])
+                <div class="col-md-4">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select">
+                        <option value="active" @selected(old('status', 'active') === 'active')>Active</option>
+                        <option value="inactive" @selected(old('status') === 'inactive')>Inactive</option>
+                        <option value="archived" @selected(old('status') === 'archived')>Archived</option>
+                    </select>
+                </div>
+            @endif
+
+            @if($schema['has_is_active'])
+                <div class="col-md-4 d-flex align-items-end">
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" id="isActive" name="is_active" value="1" @checked(old('is_active', 1))>
+                        <label class="form-check-label" for="isActive">Active</label>
+                    </div>
+                </div>
+            @endif
+
+            @if($schema['has_auto_create_profile'])
+                <div class="col-md-4 d-flex align-items-end">
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" id="autoProfile" name="auto_create_profile" value="1" @checked(old('auto_create_profile'))>
+                        <label class="form-check-label" for="autoProfile">Auto-create profile name</label>
+                    </div>
+                </div>
+            @endif
+
+            @if($schema['has_description'])
+                <div class="col-12">
+                    <label class="form-label">Description</label>
+                    <textarea name="description" class="form-control" rows="3">{{ old('description') }}</textarea>
+                </div>
+            @endif
         </div>
 
-        <div class="mb-3">
-            <label>Package</label>
-            <select name="package_id" class="form-control" required>
-                <option value="">-- Select Package --</option>
-                @foreach($packages as $p)
-                    <option value="{{ $p->id }}">{{ $p->name }}</option>
-                @endforeach
-            </select>
+        <div class="d-flex gap-2 mt-3">
+            <button type="submit" class="btn btn-primary">Save Plan</button>
+            <a href="{{ route('services.index') }}" class="btn btn-outline-secondary">Back</a>
         </div>
-
-        <div class="mb-3">
-            <label>Start Date</label>
-            <input type="date" name="start_date" class="form-control" required>
-        </div>
-
-        <div class="mb-3">
-            <label>End Date</label>
-            <input type="date" name="end_date" class="form-control" required>
-        </div>
-
-        <div class="mb-3">
-            <label>Status</label>
-            <select name="status" class="form-control" required>
-                <option value="active">Active</option>
-                <option value="suspended">Suspended</option>
-                <option value="expired">Expired</option>
-            </select>
-        </div>
-
-        <div class="mb-3">
-            <label>MAC Address (optional)</label>
-            <input type="text" name="mac_address" class="form-control">
-        </div>
-
-        <button class="btn btn-success">Assign Service</button>
-        <a href="{{ route('services.index') }}" class="btn btn-secondary">Cancel</a>
     </form>
 </div>
+
+<script>
+(() => {
+    const categoryEl = document.getElementById('planCategory');
+    if (!categoryEl) return;
+
+    function refreshByCategory() {
+        const isHotspot = (categoryEl.value || 'hotspot') === 'hotspot';
+        document.querySelectorAll('.field-hotspot').forEach((el) => {
+            el.style.display = isHotspot ? '' : 'none';
+        });
+
+        document.querySelectorAll('.field-hotspot input, .field-hotspot select, .field-hotspot textarea').forEach((input) => {
+            if (!Object.prototype.hasOwnProperty.call(input.dataset, 'requiredDefault')) {
+                input.dataset.requiredDefault = input.required ? '1' : '0';
+            }
+
+            input.disabled = !isHotspot;
+            input.required = isHotspot && input.dataset.requiredDefault === '1';
+        });
+
+        const priceLabel = document.getElementById('planPriceLabel');
+        const priceHint = document.getElementById('planPriceHint');
+        if (priceLabel) {
+            priceLabel.textContent = isHotspot ? 'Price (KES per package)' : 'Price (KES per MB)';
+        }
+        if (priceHint) {
+            priceHint.textContent = isHotspot
+                ? 'Hotspot: flat package price for configured duration/data parameters.'
+                : 'Metered: unit price per MB used for usage billing.';
+        }
+    }
+
+    categoryEl.addEventListener('change', refreshByCategory);
+    refreshByCategory();
+})();
+</script>
 @endsection

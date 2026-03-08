@@ -1,0 +1,299 @@
+auth.php:
+
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Modules\PettyCash\Controllers\Auth\LoginController;
+
+Route::get('/login', [LoginController::class, 'show'])
+    ->name('petty.login');
+
+Route::post('/login', [LoginController::class, 'authenticate'])
+    ->name('petty.login.submit');
+
+Route::post('/logout', [LoginController::class, 'logout'])
+    ->name('petty.logout');
+
+    web.php
+
+    <?php
+
+use Illuminate\Support\Facades\Route;
+use App\Modules\PettyCash\Controllers\DashboardController;
+use App\Modules\PettyCash\Controllers\CreditController;
+use App\Modules\PettyCash\Controllers\BatchController;
+use App\Modules\PettyCash\Controllers\Spending\BikeController;
+use App\Modules\PettyCash\Controllers\Spending\MealController;
+use App\Modules\PettyCash\Controllers\Spending\TokenController;
+use App\Modules\PettyCash\Controllers\Spending\OtherController;
+use App\Modules\PettyCash\Controllers\ReportsController;
+use App\Modules\PettyCash\Controllers\BikeMasterController;
+use App\Modules\PettyCash\Controllers\RespondentController;
+use App\Modules\PettyCash\Controllers\MaintenancesController;
+use App\Modules\PettyCash\Controllers\LedgerController;
+use App\Modules\PettyCash\Controllers\NotificationsController;
+
+
+
+
+
+
+
+Route::get('/', [DashboardController::class, 'index'])->name('petty.dashboard');
+// Notifications
+Route::get('/notifications', [NotificationsController::class, 'index'])->name('petty.notifications.index');
+Route::post('/notifications/mark-all-read', [NotificationsController::class, 'markAllRead'])->name('petty.notifications.read_all');
+Route::post('/notifications/{notification}/read', [NotificationsController::class, 'markRead'])->name('petty.notifications.read_one');
+
+
+// Credits
+Route::get('/credits', [CreditController::class, 'index'])->name('petty.credits.index');
+Route::get('/credits/create', [CreditController::class, 'create'])->name('petty.credits.create');
+Route::post('/credits', [CreditController::class, 'store'])->name('petty.credits.store');
+Route::get('/credits/pdf', [CreditController::class, 'pdf'])->name('petty.credits.pdf');
+
+// Batches
+Route::get('/batches', [BatchController::class, 'index'])->name('petty.batches.index');
+Route::get('/batches/{id}', [BatchController::class, 'show'])->name('petty.batches.show');
+
+// Bikes spendings
+Route::get('/spendings/bikes', [BikeController::class, 'index'])->name('petty.bikes.index');
+Route::get('/spendings/bikes/create', [BikeController::class, 'create'])->name('petty.bikes.create');
+Route::post('/spendings/bikes', [BikeController::class, 'store'])->name('petty.bikes.store');
+Route::get('/spendings/bikes/pdf', [BikeController::class, 'pdf'])->name('petty.bikes.pdf');
+
+// Drilldown: all spendings for a bike by plate
+Route::get('/bikes/{bike}/spendings', [BikeController::class, 'byBike'])->name('petty.bikes.byBike');
+
+
+// Meals spendings
+Route::get('/spendings/meals', [MealController::class, 'index'])->name('petty.meals.index');
+Route::get('/spendings/meals/create', [MealController::class, 'create'])->name('petty.meals.create');
+Route::post('/spendings/meals', [MealController::class, 'store'])->name('petty.meals.store');
+Route::get('/spendings/meals/pdf', [MealController::class, 'pdf'])->name('petty.meals.pdf');
+
+
+
+// Token/Hostels
+Route::get('/spendings/tokens', [TokenController::class, 'index'])->name('petty.tokens.index');
+Route::get('/spendings/tokens/create', [TokenController::class, 'create'])->name('petty.tokens.create');
+Route::post('/spendings/tokens/hostels', [TokenController::class, 'storeHostel'])->name('petty.tokens.hostels.store');
+
+Route::get('/spendings/tokens/hostels/{hostel}', [TokenController::class, 'showHostel'])->name('petty.tokens.hostels.show');
+Route::post('/spendings/tokens/hostels/{hostel}/payments', [TokenController::class, 'storePayment'])->name('petty.tokens.payments.store');
+
+// PDFs
+Route::get('/spendings/tokens/pdf', [TokenController::class, 'pdfHostels'])->name('petty.tokens.pdf');
+Route::get('/spendings/tokens/hostels/{hostel}/pdf', [TokenController::class, 'pdfHostelPayments'])->name('petty.tokens.hostels.pdf');
+
+
+// Other spendings
+Route::get('/spendings/others', [OtherController::class, 'index'])->name('petty.others.index');
+Route::get('/spendings/others/create', [OtherController::class, 'create'])->name('petty.others.create');
+Route::post('/spendings/others', [OtherController::class, 'store'])->name('petty.others.store');
+Route::get('/spendings/others/pdf', [OtherController::class, 'pdf'])->name('petty.others.pdf');
+
+// Reports
+Route::get('/reports', [ReportsController::class, 'index'])->name('petty.reports.index');
+
+
+// Specific reports
+Route::get('/reports/bike', [ReportsController::class, 'bikeForm'])->name('petty.reports.bike.form');
+Route::get('/reports/bike/pdf', [ReportsController::class, 'bikePdf'])->name('petty.reports.bike.pdf');
+
+Route::get('/reports/respondent', [ReportsController::class, 'respondentForm'])->name('petty.reports.respondent.form');
+Route::get('/reports/respondent/pdf', [ReportsController::class, 'respondentPdf'])->name('petty.reports.respondent.pdf');
+
+Route::get('/reports/batch', [ReportsController::class, 'batchForm'])->name('petty.reports.batch.form');
+Route::get('/reports/batch/pdf', [ReportsController::class, 'batchPdf'])->name('petty.reports.batch.pdf');
+
+// Master / General statement
+Route::get('/reports/general', [ReportsController::class, 'generalForm'])->name('petty.reports.general.form');
+Route::get('/reports/general/pdf', [ReportsController::class, 'generalPdf'])->name('petty.reports.general.pdf');
+
+
+//  Master Data
+
+Route::get('/bikes-master', [BikeMasterController::class, 'index'])->name('petty.bikes_master.index');
+Route::get('/bikes-master/create', [BikeMasterController::class, 'create'])->name('petty.bikes_master.create');
+Route::post('/bikes-master', [BikeMasterController::class, 'store'])->name('petty.bikes_master.store');
+Route::get('/bikes-master/{bike}/edit', [BikeMasterController::class, 'edit'])->name('petty.bikes_master.edit');
+Route::put('/bikes-master/{bike}', [BikeMasterController::class, 'update'])->name('petty.bikes_master.update');
+
+Route::get('/respondents', [RespondentController::class, 'index'])->name('petty.respondents.index');
+Route::get('/respondents/create', [RespondentController::class, 'create'])->name('petty.respondents.create');
+Route::post('/respondents', [RespondentController::class, 'store'])->name('petty.respondents.store');
+Route::get('/respondents/{respondent}/edit', [RespondentController::class, 'edit'])->name('petty.respondents.edit');
+Route::put('/respondents/{respondent}', [RespondentController::class, 'update'])->name('petty.respondents.update');
+
+
+// Credits edit
+Route::get('/credits/{credit}/edit', [\App\Modules\PettyCash\Controllers\CreditController::class, 'edit'])->name('petty.credits.edit');
+Route::put('/credits/{credit}', [\App\Modules\PettyCash\Controllers\CreditController::class, 'update'])->name('petty.credits.update');
+
+// Bike spendings edit
+Route::get('/spendings/bikes/{spending}/edit', [\App\Modules\PettyCash\Controllers\Spending\BikeController::class, 'edit'])->name('petty.bikes.edit');
+Route::put('/spendings/bikes/{spending}', [\App\Modules\PettyCash\Controllers\Spending\BikeController::class, 'update'])->name('petty.bikes.update');
+
+// Meals edit
+Route::get('/spendings/meals/{spending}/edit', [\App\Modules\PettyCash\Controllers\Spending\MealController::class, 'edit'])->name('petty.meals.edit');
+Route::put('/spendings/meals/{spending}', [\App\Modules\PettyCash\Controllers\Spending\MealController::class, 'update'])->name('petty.meals.update');
+
+// Others edit
+Route::get('/spendings/others/{spending}/edit', [\App\Modules\PettyCash\Controllers\Spending\OtherController::class, 'edit'])->name('petty.others.edit');
+Route::put('/spendings/others/{spending}', [\App\Modules\PettyCash\Controllers\Spending\OtherController::class, 'update'])->name('petty.others.update');
+
+// Token payments edit (individual payment rows)
+Route::get('/spendings/tokens/payments/{payment}/edit', [\App\Modules\PettyCash\Controllers\Spending\TokenController::class, 'editPayment'])->name('petty.tokens.payments.edit');
+Route::put('/spendings/tokens/payments/{payment}', [\App\Modules\PettyCash\Controllers\Spending\TokenController::class, 'updatePayment'])->name('petty.tokens.payments.update');
+
+
+Route::get('/spendings/meals/{spending}/edit', [\App\Modules\PettyCash\Controllers\Spending\MealController::class, 'edit'])->name('petty.meals.edit');
+Route::put('/spendings/meals/{spending}', [\App\Modules\PettyCash\Controllers\Spending\MealController::class, 'update'])->name('petty.meals.update');
+
+// Ledger routes
+Route::get('/ledger/spendings', [
+    \App\Modules\PettyCash\Controllers\LedgerController::class,
+    'index'
+])->name('petty.ledger.spendings');
+Route::get('ledger/spendings/pdf', [\App\Modules\PettyCash\Controllers\LedgerController::class, 'pdf'])
+    ->name('petty.ledger.spendings.pdf');
+
+
+// Route::post('/ledger/spendings/batch-update', [
+//     \App\Modules\PettyCash\Controllers\LedgerController::class,
+//     'batchUpdate'
+// ])->name('petty.ledger.batchUpdate');
+
+// Route::post('/ledger/spendings/{spending}', [
+//     \App\Modules\PettyCash\Controllers\LedgerController::class,
+//     'updateOne'
+// ])->name('petty.ledger.updateOne');
+
+
+
+// Maintenances (read-only module from bike maintenance spendings)
+
+
+
+
+Route::get('/maintenances', [MaintenancesController::class, 'index'])->name('petty.maintenances.index');
+
+Route::get('/maintenances/{bike}', [MaintenancesController::class, 'show'])->name('petty.maintenances.show');
+
+Route::get('/maintenances/{bike}/service/create', [MaintenancesController::class, 'create'])->name('petty.maintenances.service.create');
+Route::post('/maintenances/{bike}/service', [MaintenancesController::class, 'store'])->name('petty.maintenances.service.store');
+
+Route::post('/maintenances/{bike}/unroadworthy', [MaintenancesController::class, 'saveUnroadworthy'])->name('petty.maintenances.unroadworthy');
+
+
+
+.env
+
+APP_NAME=Laravel
+APP_ENV=local
+APP_KEY=base64:BDTjHRs4Oa/0QOk1+l0Ndfu2hK502ACTAfrlAb1i46A=
+APP_DEBUG=true
+APP_URL=http://127.0.0.1:8000
+
+
+APP_LOCALE=en
+APP_FALLBACK_LOCALE=en
+APP_FAKER_LOCALE=en_US
+
+APP_MAINTENANCE_DRIVER=file
+# APP_MAINTENANCE_STORE=database
+
+PHP_CLI_SERVER_WORKERS=4
+
+BCRYPT_ROUNDS=12
+
+LOG_CHANNEL=stack
+LOG_STACK=single
+LOG_DEPRECATIONS_CHANNEL=null
+LOG_LEVEL=debug
+
+DB_CONNECTION=mysql
+DB_HOST=172.16.179.79
+DB_PORT=3306
+DB_DATABASE=marcep_netbil
+DB_USERNAME=marcep
+DB_PASSWORD=anf1LBitm901DprJPWw5IAwKm9z
+
+SESSION_DRIVER=database
+SESSION_LIFETIME=120
+SESSION_ENCRYPT=false
+SESSION_PATH=/
+SESSION_DOMAIN=null
+
+BROADCAST_CONNECTION=log
+FILESYSTEM_DISK=local
+QUEUE_CONNECTION=database
+
+CACHE_STORE=database
+# CACHE_PREFIX=
+
+MEMCACHED_HOST=127.0.0.1
+
+REDIS_CLIENT=phpredis
+REDIS_HOST=127.0.0.1
+REDIS_PASSWORD=null
+REDIS_PORT=6379
+
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=nichmut43@gmail.com
+MAIL_PASSWORD=tfigumopohtzfeic
+MAIL_ENCRYPTION=tls
+MAIL_FROM_ADDRESS=nichmut43@gmail.com
+MAIL_FROM_NAME="NetBil Support"
+
+
+
+
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_DEFAULT_REGION=us-east-1
+AWS_BUCKET=
+AWS_USE_PATH_STYLE_ENDPOINT=false
+
+VITE_APP_NAME="${APP_NAME}"
+
+
+# Mikrotik Settings
+MIKROTIK_HOST=10.90.0.106
+MIKROTIK_PORT=8728
+MIKROTIK_USERNAME=user1
+MIKROTIK_PASSWORD=11111111
+
+# SMS Gateway Settings
+
+#AMAZONS SMS DETAILS
+# AMAZONS
+AMAZONS_SMS_API_KEY=9caac4c7767b63debc36631e44c35d19
+AMAZONS_SMS_PARTNER_ID=12368
+AMAZONS_SMS_SENDER="AMAZONS LTD"
+AMAZONS_SMS_BASE_URL=https://sms.textsms.co.ke/api/services/sendsms/
+
+
+# ADVANTA
+ADVANTA_SMS_API_KEY=57ce1ae7896238ef9478129fa68eba38
+ADVANTA_SMS_PARTNER_ID=14851
+ADVANTA_SMS_SENDER="Juacom"
+ADVANTA_SMS_BASE_URL=https://quicksms.advantasms.com/
+
+
+
+PAYSTACK_PUBLIC_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxx
+PAYSTACK_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxx
+PAYSTACK_PAYMENT_CALLBACK=https://netbil.marcepagency.com/payment/success
+PAYSTACK_WEBHOOK_URL=https://netbil.marcepagency.com/payment/webhook
+
+MEGAPAY_API_KEY=MGPY6tr3Abv6
+MEGAPAY_EMAIL=nichmut43@gmail.com
+MEGAPAY_WEBHOOK_TOKEN=randomstring12345678,.,.@payment
+MEGAPAY_STATUS_POLL_ENABLED=true
+MEGAPAY_BASE_URL=https://megapay.co.ke/backend/v1
+
+

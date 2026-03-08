@@ -18,6 +18,10 @@ return [
         'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
     ],
 
+
+
+
+
     /*
     |--------------------------------------------------------------------------
     | Authentication Guards
@@ -34,42 +38,51 @@ return [
     | Supported: "session"
     |
     */
-
-    'guards' => [
-        'web' => [
-            'driver' => 'session',
-            'provider' => 'users',
-        ],
+'guards' => [
+    'web' => [
+        'driver' => 'session',
+        'provider' => 'users',
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | User Providers
-    |--------------------------------------------------------------------------
-    |
-    | All authentication guards have a user provider, which defines how the
-    | users are actually retrieved out of your database or other storage
-    | system used by the application. Typically, Eloquent is utilized.
-    |
-    | If you have multiple user tables or models you may configure multiple
-    | providers to represent the model / table. These providers may then
-    | be assigned to any extra authentication guards you have defined.
-    |
-    | Supported: "database", "eloquent"
-    |
-    */
-
-    'providers' => [
-        'users' => [
-            'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', App\Models\User::class),
-        ],
-
-        // 'users' => [
-        //     'driver' => 'database',
-        //     'table' => 'users',
-        // ],
+    'inventory' => [
+        'driver' => 'session',
+        'provider' => 'inventory_users',
     ],
+
+    'petty' => [
+        'driver' => 'session',
+        'provider' => 'petty_users',
+    ],
+
+
+    'superadmin' => [
+        'driver' => 'session',
+        'provider' => 'superadmins',
+    ],
+],
+
+'providers' => [
+    'users' => [
+        'driver' => 'eloquent',
+        'model' => App\Models\User::class,
+    ],
+
+    'inventory_users' => [
+    'driver' => 'eloquent',
+    'model' => \App\Modules\Inventory\Models\InventoryUser::class,
+],
+
+
+    'petty_users' => [
+        'driver' => 'eloquent',
+        'model' => App\Modules\PettyCash\Models\PettyUser::class,
+    ],
+
+    'superadmins' => [
+        'driver' => 'eloquent',
+        'model' => App\Models\SuperAdmin::class,
+    ],
+],
 
     /*
     |--------------------------------------------------------------------------
@@ -97,6 +110,12 @@ return [
             'expire' => 60,
             'throttle' => 60,
         ],
+         'petty_users' => [
+        'provider' => 'petty_users',
+        'table' => 'password_reset_tokens',
+        'expire' => 60,
+        'throttle' => 60,
+    ],
     ],
 
     /*

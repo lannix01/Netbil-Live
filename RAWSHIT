@@ -1,0 +1,2541 @@
+MIKROTIKTESTCONTROLLER.PHP
+<?php
+
+namespace App\Http\Controllers;
+
+require_once app_path('Libraries/RouterOSAPI.php');
+require_once app_path('Libraries/routeros_api.class.php');
+
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+
+class MikrotikTestController extends Controller
+{
+    protected function connect(): ?\RouterosAPI
+    {
+        $API = new \RouterosAPI();
+
+        $API->port    = config('mikrotik.port');
+        $API->timeout = config('mikrotik.timeout');
+
+        if (!$API->connect(
+            config('mikrotik.host'),
+            config('mikrotik.user'),
+            config('mikrotik.pass')
+        )) {
+            return null;
+        }
+
+        return $API;
+    }
+
+    /**
+     * Handles system info, terminal commands, file list/load/save.
+     * Always returns a JsonResponse, even if called manually.
+     */
+    public function system(Request $request = null): JsonResponse
+    {
+        $isPost = $request?->isMethod('post') ?? false;
+
+        $API = $this->connect();
+
+        if (!$API) {
+            $data = ['connected' => false, 'system' => []];
+            return response()->json($data);
+        }
+
+        // =========================
+        // POST ACTIONS (AJAX)
+        // =========================
+        if ($isPost) {
+            $action = $request->input('action');
+
+            // Terminal
+            if ($action === 'terminal') {
+                $cmd = trim($request->input('command'));
+                $res = $API->comm($cmd);
+                $API->disconnect();
+
+                return response()->json([
+                    'output' => json_encode($res, JSON_PRETTY_PRINT)
+                ]);
+            }
+
+            // File list
+            if ($action === 'files') {
+                $files = $API->comm('/file/print');
+                $API->disconnect();
+
+                return response()->json([
+                    'files' => collect($files)
+                        ->where('type', '!=', 'directory')
+                        ->map(fn($f) => ['name' => $f['name']])
+                        ->values()
+                ]);
+            }
+
+            // Get file contents
+            if ($action === 'getFile') {
+                $name = $request->input('name');
+                $res = $API->comm('/file/print', ['?name' => $name]);
+                $API->disconnect();
+
+                return response()->json([
+                    'content' => $res[0]['contents'] ?? ''
+                ]);
+            }
+
+            // Save file
+            if ($action === 'saveFile') {
+                $API->comm('/file/set', [
+                    '.id' => $request->input('name'),
+                    'contents' => $request->input('content')
+                ]);
+                $API->disconnect();
+
+                return response()->json(['status' => 'ok']);
+            }
+        }
+
+        // =========================
+        // GET SYSTEM INFO
+        // =========================
+        $sysRes = $API->comm('/system/resource/print')[0] ?? [];
+        $identity = $API->comm('/system/identity/print')[0] ?? [];
+        $API->disconnect();
+
+        $data = [
+            'connected' => true,
+            'host' => config('mikrotik.host'),
+            'system' => [
+                'uptime'    => $sysRes['uptime'] ?? 'Unknown',
+                'version'   => $sysRes['version'] ?? '',
+                'boardname' => $sysRes['board-name'] ?? '',
+                'cpu'       => $sysRes['cpu'] ?? '',
+                'cpuLoad'   => (int)($sysRes['cpu-load'] ?? 0),
+                'totalMem'  => round(($sysRes['total-memory'] ?? 0) / 1024 / 1024),
+                'freeMem'   => round(($sysRes['free-memory'] ?? 0) / 1024 / 1024),
+                'identity'  => $identity['name'] ?? '',
+            ]
+        ];
+
+        return response()->json($data);
+    }
+}
+
+
+MIKROTIKS.BLADE.PHP
+@php
+$system = $system ?? [];
+$host = $system['host'] ?? 'Unknown';
+$webfigUrl = 'http://' . $host;
+@endphp
+
+<div class="container py-3">
+
+    {{-- SYSTEM INFO + CHARTS --}}
+    <div class="row g-3 mb-4">
+
+        {{-- SYSTEM INFO --}}
+        <div class="col-md-4">
+            <h6 class="mb-2">System Info</h6>
+
+            <ul class="list-group small">
+                <li class="list-group-item"><strong>Identity:</strong> {{ $system['identity'] ?? '-' }}</li>
+                <li class="list-group-item"><strong>Board:</strong> {{ $system['boardname'] ?? '-' }}</li>
+                <li class="list-group-item"><strong>RouterOS:</strong> {{ $system['version'] ?? '-' }}</li>
+                <li class="list-group-item"><strong>Uptime:</strong> <span id="uptime">{{ $system['uptime'] ?? '-' }}</span></li>
+                <li class="list-group-item"><strong>CPU:</strong> <span id="cpuModel">{{ $system['cpu'] ?? '-' }}</span> (<span id="cpuLoad">{{ $system['cpuLoad'] ?? 0 }}</span>%)</li>
+                <li class="list-group-item"><strong>Memory:</strong> <span id="memoryUsed">{{ ($system['totalMem'] ?? 0) - ($system['freeMem'] ?? 0) }}</span> MB / <span id="memoryFree">{{ $system['freeMem'] ?? 0 }}</span> MB free</li>
+            </ul>
+        </div>
+
+        {{-- ACTION BUTTONS + DONUTS --}}
+        <div class="col-md-8 text-end">
+
+            <div class="mb-3">
+                <button class="btn btn-dark btn-sm me-2" data-bs-toggle="modal" data-bs-target="#terminalModal">Terminal</button>
+                <button class="btn btn-success btn-sm me-2" data-bs-toggle="modal" data-bs-target="#filesModal">Files</button>
+                <button class="btn btn-secondary btn-sm" id="toggleWebfig">WebFig</button>
+            </div>
+
+            <div class="row g-3 justify-content-end">
+                <div class="col-md-4 text-center">
+                    <div class="small fw-semibold mb-1">CPU</div>
+                    <canvas id="cpuChart" height="120"></canvas>
+                </div>
+                <div class="col-md-4 text-center">
+                    <div class="small fw-semibold mb-1">Memory</div>
+                    <canvas id="memoryChart" height="120"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- WEBFIG --}}
+    <div id="webfigCard" class="border rounded mt-3" style="display:none;height:420px">
+        <iframe src="{{ $webfigUrl }}" style="width:100%;height:100%;border:none"></iframe>
+    </div>
+</div>
+
+{{-- TERMINAL MODAL --}}
+<div class="modal fade" id="terminalModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header">
+                <h6 class="modal-title">MikroTik Terminal</h6>
+                <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <pre id="terminalOutput" class="bg-black p-2 small" style="height:260px;overflow:auto"></pre>
+                <input id="terminalInput" class="form-control form-control-sm bg-dark text-light mt-2" placeholder="/system resource print">
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- FILES MODAL --}}
+<div class="modal fade" id="filesModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title">Hotspot Files</h6>
+                <button class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body row g-0">
+                <div class="col-3 border-end">
+                    <ul id="fileList" class="list-group list-group-flush small"></ul>
+                </div>
+                <div class="col-9 p-2">
+                    <textarea id="fileEditor" class="form-control" style="height:260px;font-family:monospace"></textarea>
+                    <button id="saveFile" class="btn btn-success btn-sm mt-2">Save File</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- CHART.JS --}}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+const csrf = '{{ csrf_token() }}';
+let currentSystem = @json($system);
+
+/* =========================
+   CENTER TEXT PLUGIN
+========================= */
+Chart.register({
+    id: 'centerText',
+    afterDraw(chart) {
+        const { ctx, chartArea } = chart;
+        const val = chart.data.datasets[0].data[0];
+        ctx.save();
+        ctx.font = 'bold 15px sans-serif';
+        ctx.fillStyle = '#212529';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(val + '%',(chartArea.left + chartArea.right)/2,(chartArea.top + chartArea.bottom)/2);
+        ctx.restore();
+    }
+});
+
+/* =========================
+   CPU + MEMORY CHARTS
+========================= */
+const cpuChart = new Chart(document.getElementById('cpuChart'), {
+    type: 'doughnut',
+    data: { datasets:[{ data:[currentSystem.cpuLoad ?? 0,100-(currentSystem.cpuLoad ?? 0)], backgroundColor:['#0d6efd','#e9ecef'], borderWidth:0 }] },
+    options: { cutout:'78%', plugins:{legend:{display:false}} }
+});
+
+function memPercent(sys){ return sys.totalMem ? Math.round(((sys.totalMem-sys.freeMem)/sys.totalMem)*100) : 0; }
+
+const memoryChart = new Chart(document.getElementById('memoryChart'), {
+    type: 'doughnut',
+    data: { datasets:[{ data:[memPercent(currentSystem),100-memPercent(currentSystem)], backgroundColor:['#198754','#e9ecef'], borderWidth:0 }] },
+    options: { cutout:'78%', plugins:{legend:{display:false}} }
+});
+
+/* =========================
+   LIVE REFRESH EVERY 2s
+========================= */
+async function refreshSystem(){
+    try {
+        const res = await fetch(window.location.href,{ headers:{'Accept':'application/json'} });
+        const data = await res.json();
+        if(!data.system) return;
+        currentSystem = data.system;
+        const usedMem = currentSystem.totalMem-currentSystem.freeMem;
+        const memPct = memPercent(currentSystem);
+        uptime.textContent=currentSystem.uptime;
+        cpuLoad.textContent=currentSystem.cpuLoad;
+        cpuModel.textContent=currentSystem.cpu;
+        memoryUsed.textContent=usedMem;
+        memoryFree.textContent=currentSystem.freeMem;
+        cpuChart.data.datasets[0].data=[currentSystem.cpuLoad,100-currentSystem.cpuLoad];
+        cpuChart.update();
+        memoryChart.data.datasets[0].data=[memPct,100-memPct];
+        memoryChart.update();
+    }catch(e){console.warn('Live refresh skipped');}
+}
+setInterval(refreshSystem,2000);
+
+/* =========================
+   WEBFIG TOGGLE
+========================= */
+toggleWebfig.onclick = ()=>{ webfigCard.style.display = webfigCard.style.display==='none'?'block':'none'; };
+
+/* =========================
+   TERMINAL
+========================= */
+terminalInput.addEventListener('keydown', async e=>{
+    if(e.key!=='Enter') return;
+    const cmd = e.target.value.trim(); e.target.value='';
+    terminalOutput.textContent+=`\n> ${cmd}\n`;
+    const r = await fetch('',{ method:'POST', headers:{'X-CSRF-TOKEN':csrf,'Content-Type':'application/json'}, body:JSON.stringify({action:'terminal',command:cmd}) });
+    const j = await r.json();
+    terminalOutput.textContent+=j.output+'\n';
+    terminalOutput.scrollTop=terminalOutput.scrollHeight;
+});
+
+/* =========================
+   FILES
+========================= */
+filesModal.addEventListener('shown.bs.modal', async ()=>{
+    const r = await fetch('',{ method:'POST', headers:{'X-CSRF-TOKEN':csrf,'Content-Type':'application/json'}, body:JSON.stringify({action:'files'}) });
+    const j = await r.json();
+    fileList.innerHTML='';
+    j.files.forEach(f=>{
+        const li=document.createElement('li');
+        li.className='list-group-item';
+        li.textContent=f.name;
+        li.onclick=()=>loadFile(f.name);
+        fileList.appendChild(li);
+    });
+});
+
+async function loadFile(name){
+    const r = await fetch('',{ method:'POST', headers:{'X-CSRF-TOKEN':csrf,'Content-Type':'application/json'}, body:JSON.stringify({action:'getFile',name}) });
+    const j = await r.json();
+    fileEditor.value=j.content;
+    saveFile.onclick=()=>saveFileContent(name);
+}
+
+async function saveFileContent(name){
+    await fetch('',{ method:'POST', headers:{'X-CSRF-TOKEN':csrf,'Content-Type':'application/json'}, body:JSON.stringify({action:'saveFile',name,content:fileEditor.value}) });
+}
+</script>
+
+
+--------OLD WEB.PHP--------
+
+<?php
+
+use Illuminate\Support\Facades\Route;
+
+use App\Http\Controllers\{
+    ProfileController,
+    DashboardController,
+    InvoiceController,
+    ChatController,
+    ChatsController,
+    CustomerController,
+    DhcpController,
+    DeviceController,
+    ReportController,
+    SettingController,
+    ControlPanelController,
+    MetricsController,
+    LogsController,
+    ServicesController,
+    MikrotikApiController,
+    MikrotikTestController,
+    CaptivePortalController,
+    PackageController,
+    AuthVerificationController,
+    AuthenticationController,
+    SuperAdminLoginController,
+    UserManagementController,
+    ConnectionController,
+    TerminalController
+};
+
+// Public Route
+Route::get('/', function () {
+    return view('welcome');
+});
+
+// Authenticated & Verified Routes
+Route::middleware(['auth', 'verified'])->group(function () {
+
+    // Dashboard
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/dashboard/refresh', [DashboardController::class, 'refresh'])->name('dashboard.refresh');
+    Route::get('/dashboard/data', [DashboardController::class, 'data'])->name('dashboard.data');
+
+    // Invoices
+    Route::get('/invoices', [InvoiceController::class, 'index'])->name('invoices.index');
+
+    // Connection portal landing
+Route::get('/connect', [ConnectionController::class, 'index'])->name('connect.index');
+
+// Hotspot package selection submission
+Route::post('/connect/hotspot', [ConnectionController::class, 'connectHotspot'])->name('connect.hotspot');
+
+// Metered login submission
+Route::post('/connect/metered', [ConnectionController::class, 'connectMetered'])->name('connect.metered');
+
+
+//Route::get('/', [ConnectionController::class, 'index'])->name('portal');
+
+Route::post('/metered', [ConnectionController::class, 'metered'])
+    ->name('portal.metered');
+
+Route::post('/hotspot', [ConnectionController::class, 'hotspot'])
+    ->name('portal.hotspot');
+    // Customers
+    Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
+    Route::get('/customers/section/{section}', [CustomerController::class, 'section'])->name('customers.section');
+    Route::post('/customers/disconnect', [CustomerController::class, 'disconnect'])->name('customers.disconnect');
+    Route::post('/customers/monitor-traffic', [CustomerController::class, 'monitorTraffic'])->name('customers.monitor');
+
+    // DHCP, Devices, Reports
+    Route::get('/dhcp', [DhcpController::class, 'index'])->name('dhcp.index');
+    Route::get('/devices', [DeviceController::class, 'index'])->name('devices.index');
+    Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+
+    // Chats
+    Route::get('/chats', [ChatsController::class, 'index'])->name('chats.index');
+    Route::post('/chats/send', [ChatsController::class, 'send'])->name('chats.send');
+    Route::delete('/chats/delete/{id}', [ChatsController::class, 'destroy'])->name('chats.delete');
+    Route::get('/chats/{phone}', [ChatsController::class, 'show'])->name('chats.show');
+
+  // Main logs page
+Route::get('/logs', [LogsController::class, 'index'])->name('logs.index');
+
+// AJAX fetch for live logs
+Route::get('/logs/fetch', [LogsController::class, 'fetch'])->name('logs.fetch');
+    // Settings & Control Panel
+    Route::get('/settings', [SettingController::class, 'index'])->name('settings.index');
+    Route::get('/control/panel', [ControlPanelController::class, 'index'])->name('control.panel');
+
+    // MikroTik / Metrics
+    
+    Route::get('/mikrotik/test', [MikrotikTestController::class, 'index'])->name('mikrotik.test');
+    Route::get('/mikrotiks', [MetricsController::class, 'index'])->name('mikrotiks.index');
+    Route::get('/metrics', [MetricsController::class, 'fetch'])->name('metrics.fetch');
+});
+
+
+Route::get('/mikrotik/hotspot/active', [MikrotikApiController::class, 'hotspotActive'])->name('mikrotik.hotspot.active');
+Route::get('/mikrotik/hotspot/users', [MikrotikApiController::class, 'hotspotUsers'])->name('mikrotik.hotspot.users');
+Route::get('/mikrotik/hotspot/hosts', [MikrotikApiController::class, 'hotspotHosts'])->name('mikrotik.hotspot.hosts');
+Route::get('/mikrotik/hotspot/cookies', [MikrotikApiController::class, 'hotspotCookies'])
+    ->name('mikrotik.hotspot.cookies');
+// Index page
+Route::get('/services', [ServicesController::class, 'index'])->name('services.index');
+
+// Create page
+Route::get('/services/create', [ServicesController::class, 'create'])->name('services.create');
+
+// Store action (for form submission)
+Route::post('/services', [ServicesController::class, 'store'])->name('services.store');
+
+// Optional: Delete action
+Route::delete('/services/{service}', [ServicesController::class, 'destroy'])->name('services.destroy');
+Route::post('/terminal/run', [TerminalController::class, 'run'])->name('terminal.run');
+
+Route::middleware(['auth'])->group(function () {
+    Route::get('/authentication', [AuthenticationController::class, 'index'])->name('authentication');
+    Route::post('/authentication/{user}/verify', [AuthenticationController::class, 'verify'])->name('authentication.verify');
+});
+
+
+Route::prefix('control/users')->middleware(['auth'])->group(function () {
+    Route::get('/', [UserManagementController::class, 'index'])->name('users.panel');
+    Route::get('/{user}', [UserManagementController::class, 'show']);
+    Route::post('/update/{user}', [UserManagementController::class, 'update']);
+    Route::post('/toggle-login/{user}', [UserManagementController::class, 'toggleLogin']);
+    Route::post('/reset-password/{user}', [UserManagementController::class, 'resetPassword']);
+});
+
+Route::prefix('packages')->group(function () {
+    Route::get('/', [PackageController::class, 'index'])->name('packages.index');
+    Route::get('/create', [PackageController::class, 'create'])->name('packages.create');
+    Route::post('/', [PackageController::class, 'store'])->name('packages.store');
+    Route::get('/{package}/edit', [PackageController::class, 'edit'])->name('packages.edit');
+    Route::put('/{package}', [PackageController::class, 'update'])->name('packages.update');
+    Route::delete('/{package}', [PackageController::class, 'destroy'])->name('packages.destroy');
+});
+
+Route::get('/superadmin/login', [SuperAdminLoginController::class, 'showLoginForm'])
+    ->name('superadmin.login');
+
+Route::post('/superadmin/login', [SuperAdminLoginController::class, 'login'])
+    ->name('superadmin.login.post');
+
+Route::post('/superadmin/logout', [SuperAdminLoginController::class, 'logout'])
+    ->name('superadmin.logout');
+
+Route::middleware(['auth'])->group(function () {
+    Route::get('/authentication', [AuthenticationController::class, 'index'])->name('authentication');
+    Route::post('/authentication/{user}/verify', [AuthenticationController::class, 'verify'])->name('authentication.verify');
+    Route::delete('/authentication/{user}/delete', [AuthenticationController::class, 'destroy'])->name('authentication.delete');
+});
+
+
+// Public captive portal
+Route::get('/portal', [CaptivePortalController::class, 'landing'])->name('portal.landing');
+Route::post('/portal/pppoe', [CaptivePortalController::class, 'createPppoe'])->name('portal.pppoe');
+Route::post('/portal/hotspot', [CaptivePortalController::class, 'createHotspotSession'])->name('portal.hotspot');
+Route::post('/portal/metered', [CaptivePortalController::class, 'createMeteredUser'])->name('portal.metered');
+
+// Payment (M-Pesa STK push start + callback)
+Route::post('/portal/payment/stk', [CaptivePortalController::class, 'initiateStk'])->name('portal.payment.stk');
+Route::post('/portal/payment/webhook', [CaptivePortalController::class, 'paymentWebhook'])->name('portal.payment.webhook');
+
+Route::get('/settings', [SettingController::class, 'index'])
+    ->name('settings.index')
+    ->middleware(['auth', 'verified']);
+
+
+
+
+
+Route::get('/control', [ControlPanelController::class, 'index'])->name('admin.panel');
+
+
+// Profile Routes (auth only, not verified)
+Route::middleware('auth')->group(function () {
+    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+});
+
+// Auth routes (Jetstream/Breeze/etc.)
+require __DIR__ . '/auth.php';
+
+
+------- CAPTIVE PLAINS TEMPLATE ----
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetBil Captive Portal</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --primary-light: #dbeafe;
+            --secondary: #10b981;
+            --secondary-dark: #059669;
+            --text: #1f2937;
+            --text-light: #6b7280;
+            --text-muted: #9ca3af;
+            --bg: #f3f4f6;
+            --card-bg: #ffffff;
+            --border: #e5e7eb;
+            --shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .portal-container {
+            background: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            width: 100%;
+            max-width: 500px;
+            overflow: hidden;
+        }
+
+        .portal-header {
+            background: linear-gradient(135deg, var(--secondary) 0%, var(--secondary-dark) 100%);
+            padding: 2rem;
+            text-align: center;
+            color: white;
+        }
+
+        .portal-header h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .portal-header p {
+            font-size: 0.95rem;
+            opacity: 0.95;
+        }
+
+        .portal-body {
+            padding: 1.5rem;
+        }
+
+        .connection-tabs {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+            background: var(--bg);
+            padding: 0.4rem;
+            border-radius: 10px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            background: transparent;
+            color: var(--text-light);
+            transition: all 0.2s ease;
+        }
+
+        .tab-btn.active {
+            background: white;
+            color: var(--secondary);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .form-section {
+            display: none;
+        }
+
+        .form-section.active {
+            display: block;
+        }
+
+        /* Package Cards - Matching Reference Design */
+        .packages-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .package-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1rem 1.25rem;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            box-shadow: var(--shadow);
+        }
+
+        .package-card:hover {
+            border-color: var(--primary);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+        }
+
+        .package-card.selected {
+            border-color: var(--primary);
+            background: var(--primary-light);
+        }
+
+        .package-info {
+            flex: 1;
+        }
+
+        .package-name {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 0.25rem;
+            line-height: 1.3;
+        }
+
+        .package-meta {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+
+        .buy-btn {
+            padding: 0.5rem 1.5rem;
+            background: white;
+            color: var(--primary);
+            border: 2px solid var(--primary);
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+
+        .buy-btn:hover {
+            background: var(--primary);
+            color: white;
+            transform: scale(1.05);
+        }
+
+        .package-card.selected .buy-btn {
+            background: var(--primary);
+            color: white;
+        }
+
+        /* Free Package Special Styling */
+        .package-card.free-package {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border-color: #f59e0b;
+        }
+
+        .package-card.free-package .package-name {
+            color: #92400e;
+        }
+
+        .package-card.free-package .package-meta {
+            color: #78350f;
+        }
+
+        /* Metered Login Form */
+        .login-form {
+            max-width: 100%;
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-wrapper i {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-light);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.875rem 1rem 0.875rem 3rem;
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--secondary);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+        }
+
+        .form-hint {
+            font-size: 0.8rem;
+            color: var(--text-light);
+            margin-top: 0.5rem;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, var(--secondary), var(--secondary-dark));
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 1.5rem;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(16, 185, 129, 0.3);
+        }
+
+        .info-text {
+            text-align: center;
+            color: var(--text-light);
+            padding: 2rem;
+            font-size: 0.95rem;
+        }
+
+        .connect-btn-wrapper {
+            position: sticky;
+            bottom: 0;
+            background: white;
+            padding: 1rem 0 0;
+            border-top: 1px solid var(--border);
+            margin-top: 1.5rem;
+        }
+
+        .connect-btn {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, var(--secondary), var(--secondary-dark));
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .connect-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .connect-btn:not(:disabled):hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(16, 185, 129, 0.3);
+        }
+
+        @media (max-width: 600px) {
+            .package-card {
+                flex-direction: column;
+                align-items: flex-start;
+                padding: 1rem;
+            }
+
+            .buy-btn {
+                width: 100%;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="portal-container">
+        <div class="portal-header">
+            <h1><i class="fas fa-wifi"></i> Welcome to NetBil WiFi</h1>
+            <p>Fast, reliable internet at your fingertips</p>
+        </div>
+
+        <div class="portal-body">
+            <div class="connection-tabs">
+                <button class="tab-btn active" id="btnHotspot">
+                    <i class="fas fa-ticket-alt"></i> Hotspot
+                </button>
+                <button class="tab-btn" id="btnMetered">
+                    <i class="fas fa-user-circle"></i> Metered
+                </button>
+            </div>
+
+            <!-- Hotspot Packages -->
+            <div class="form-section active" id="hotspotSection">
+                <form method="POST" action="{{ route('connect.hotspot') }}" id="hotspotForm">
+                    @csrf
+                    <input type="hidden" name="package_id" id="selectedPackageId">
+                    
+                    @if($packages->isEmpty())
+                        <p class="info-text">
+                            <i class="fas fa-info-circle"></i><br>
+                            No packages available at the moment.
+                        </p>
+                    @else
+                        <div class="packages-list">
+                            <!-- Free Package Example (if exists) -->
+                            <div class="package-card free-package">
+                                <div class="package-info">
+                                    <div class="package-name">Daily FREE 20 Minutes UnlimiNET FREE</div>
+                                    <div class="package-meta">(Available from 6AM to 8AM daily)</div>
+                                </div>
+                            </div>
+
+                            @foreach($packages as $package)
+                                <div class="package-card" data-package-id="{{ $package->id }}">
+                                    <div class="package-info">
+                                        <div class="package-name">{{ $package->name }}</div>
+                                        <div class="package-meta">1 Device</div>
+                                    </div>
+                                    
+                                    <button type="button" class="buy-btn" onclick="selectPackage({{ $package->id }}, this)">
+                                        BUY
+                                    </button>
+                                </div>
+                            @endforeach
+                        </div>
+
+                        <div class="connect-btn-wrapper">
+                            <button type="submit" class="connect-btn" id="connectHotspotBtn" disabled>
+                                <i class="fas fa-rocket"></i> Connect to WiFi
+                            </button>
+                        </div>
+                    @endif
+                </form>
+            </div>
+
+            <!-- Metered Login -->
+            <div class="form-section" id="meteredSection">
+                <form method="POST" action="{{ route('connect.metered') }}" class="login-form">
+                    @csrf
+                    
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-user"></i>
+                            <input 
+                                type="text" 
+                                id="username"
+                                name="username" 
+                                class="form-input"
+                                placeholder="Enter your username" 
+                                required
+                            >
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-lock"></i>
+                            <input 
+                                type="password" 
+                                id="password"
+                                name="password" 
+                                class="form-input"
+                                placeholder="Enter your password"
+                            >
+                        </div>
+                        <p class="form-hint">
+                            <i class="fas fa-info-circle"></i> Password may be empty if created via Mikrotik
+                        </p>
+                    </div>
+
+                    <button type="submit" class="submit-btn">
+                        <i class="fas fa-sign-in-alt"></i> Login to Network
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const btnHotspot = document.getElementById('btnHotspot');
+        const btnMetered = document.getElementById('btnMetered');
+        const hotspotSection = document.getElementById('hotspotSection');
+        const meteredSection = document.getElementById('meteredSection');
+
+        btnHotspot.addEventListener('click', () => {
+            btnHotspot.classList.add('active');
+            btnMetered.classList.remove('active');
+            hotspotSection.classList.add('active');
+            meteredSection.classList.remove('active');
+        });
+
+        btnMetered.addEventListener('click', () => {
+            btnMetered.classList.add('active');
+            btnHotspot.classList.remove('active');
+            meteredSection.classList.add('active');
+            hotspotSection.classList.remove('active');
+        });
+
+        function selectPackage(packageId, button) {
+            // Remove selection from all cards
+            document.querySelectorAll('.package-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            
+            // Add selection to clicked card
+            const card = button.closest('.package-card');
+            card.classList.add('selected');
+            
+            // Update hidden input
+            document.getElementById('selectedPackageId').value = packageId;
+            
+            // Enable connect button
+            document.getElementById('connectHotspotBtn').disabled = false;
+        }
+    </script>
+</body>
+</html>
+
+
+------CAPTIVE detailed TEMPLATE------
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetBil Captive Portal</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #10b981;
+            --primary-dark: #059669;
+            --primary-light: #d1fae5;
+            --secondary: #3b82f6;
+            --secondary-dark: #2563eb;
+            --text: #1f2937;
+            --text-light: #6b7280;
+            --bg: #f3f4f6;
+            --card-bg: #ffffff;
+            --border: #e5e7eb;
+            --shadow: 0 10px 30px rgba(0,0,0,0.08);
+            --shadow-sm: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .portal-container {
+            background: var(--card-bg);
+            border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            width: 100%;
+            max-width: 900px;
+            overflow: hidden;
+        }
+
+        .portal-header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            padding: 2.5rem 2rem;
+            text-align: center;
+            color: white;
+        }
+
+        .portal-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .portal-header p {
+            font-size: 1rem;
+            opacity: 0.95;
+        }
+
+        .portal-body {
+            padding: 2rem;
+        }
+
+        .connection-tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            background: var(--bg);
+            padding: 0.5rem;
+            border-radius: 12px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 0.875rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 1rem;
+            background: transparent;
+            color: var(--text-light);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .tab-btn.active {
+            background: white;
+            color: var(--primary);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .tab-btn:hover:not(.active) {
+            color: var(--text);
+        }
+
+        .form-section {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .form-section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Thin Package Cards */
+        .packages-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .package-card {
+            background: var(--card-bg);
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem 1.25rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .package-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 4px;
+            background: linear-gradient(180deg, var(--primary), var(--secondary));
+            transform: scaleY(0);
+            transition: transform 0.3s ease;
+        }
+
+        .package-card:hover {
+            border-color: var(--primary);
+            box-shadow: var(--shadow);
+            transform: translateX(4px);
+        }
+
+        .package-card:hover::before {
+            transform: scaleY(1);
+        }
+
+        .package-card.selected {
+            border-color: var(--primary);
+            background: var(--primary-light);
+        }
+
+        .package-card.selected::before {
+            transform: scaleY(1);
+        }
+
+        .package-info {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+            flex: 1;
+        }
+
+        .package-name {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text);
+            min-width: 120px;
+        }
+
+        .package-details {
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+        }
+
+        .package-detail {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.875rem;
+            color: var(--text-light);
+        }
+
+        .package-detail i {
+            color: var(--primary);
+            font-size: 0.8rem;
+        }
+
+        .package-price {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--primary);
+            margin-right: 1rem;
+        }
+
+        .select-btn {
+            padding: 0.5rem 1.25rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            white-space: nowrap;
+        }
+
+        .select-btn:hover {
+            background: var(--primary-dark);
+            transform: scale(1.05);
+        }
+
+        .package-card.selected .select-btn {
+            background: var(--primary-dark);
+        }
+
+        .select-btn i.check-icon {
+            display: none;
+        }
+
+        .package-card.selected .select-btn i.check-icon {
+            display: inline;
+        }
+
+        /* Metered Login Form */
+        .login-form {
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-wrapper i {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-light);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.875rem 1rem 0.875rem 3rem;
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-light);
+        }
+
+        .form-hint {
+            font-size: 0.8rem;
+            color: var(--text-light);
+            margin-top: 0.5rem;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, var(--secondary), var(--secondary-dark));
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 1.5rem;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
+        }
+
+        .info-text {
+            text-align: center;
+            color: var(--text-light);
+            padding: 2rem;
+            font-size: 0.95rem;
+        }
+
+        .connect-btn-wrapper {
+            position: sticky;
+            bottom: 0;
+            background: white;
+            padding: 1.5rem 0 0;
+            border-top: 2px solid var(--border);
+            margin-top: 2rem;
+        }
+
+        .connect-btn {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+        }
+
+        .connect-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .connect-btn:not(:disabled):hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(16, 185, 129, 0.3);
+        }
+
+        @media (max-width: 768px) {
+            .package-info {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
+
+            .package-details {
+                gap: 1rem;
+            }
+
+            .package-card {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .select-btn {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .portal-header h1 {
+                font-size: 1.5rem;
+            }
+
+            .portal-body {
+                padding: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="portal-container">
+        <div class="portal-header">
+            <h1><i class="fas fa-wifi"></i> Welcome to NetBil WiFi</h1>
+            <p>Fast, reliable internet at your fingertips</p>
+        </div>
+
+        <div class="portal-body">
+            <div class="connection-tabs">
+                <button class="tab-btn active" id="btnHotspot">
+                    <i class="fas fa-ticket-alt"></i> Hotspot Packages
+                </button>
+                <button class="tab-btn" id="btnMetered">
+                    <i class="fas fa-user-circle"></i> Metered Login
+                </button>
+            </div>
+
+            <!-- Hotspot Packages -->
+            <div class="form-section active" id="hotspotSection">
+                <form method="POST" action="{{ route('connect.hotspot') }}" id="hotspotForm">
+                    @csrf
+                    <input type="hidden" name="package_id" id="selectedPackageId">
+                    
+                    @if($packages->isEmpty())
+                        <p class="info-text">
+                            <i class="fas fa-info-circle"></i><br>
+                            No packages available at the moment. Please check back later.
+                        </p>
+                    @else
+                        <div class="packages-list">
+                            @foreach($packages as $package)
+                                <div class="package-card" data-package-id="{{ $package->id }}">
+                                    <div class="package-info">
+                                        <div class="package-name">{{ $package->name }}</div>
+                                        <div class="package-details">
+                                            <div class="package-detail">
+                                                <i class="fas fa-clock"></i>
+                                                <span>{{ $package->duration }} hrs</span>
+                                            </div>
+                                            <div class="package-detail">
+                                                <i class="fas fa-bolt"></i>
+                                                <span>High Speed</span>
+                                            </div>
+                                        </div>
+                                        <div class="package-price">
+                                            KES {{ number_format($package->price, 2) }}
+                                        </div>
+                                    </div>
+                                    
+                                    <button type="button" class="select-btn" onclick="selectPackage({{ $package->id }}, this)">
+                                        <i class="check-icon fas fa-check-circle"></i>
+                                        <span>Select</span>
+                                    </button>
+                                </div>
+                            @endforeach
+                        </div>
+
+                        <div class="connect-btn-wrapper">
+                            <button type="submit" class="connect-btn" id="connectHotspotBtn" disabled>
+                                <i class="fas fa-rocket"></i>
+                                <span>Connect to WiFi</span>
+                            </button>
+                        </div>
+                    @endif
+                </form>
+            </div>
+
+            <!-- Metered Login -->
+            <div class="form-section" id="meteredSection">
+                <form method="POST" action="{{ route('connect.metered') }}" class="login-form">
+                    @csrf
+                    
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-user"></i>
+                            <input 
+                                type="text" 
+                                id="username"
+                                name="username" 
+                                class="form-input"
+                                placeholder="Enter your username" 
+                                required
+                            >
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-lock"></i>
+                            <input 
+                                type="password" 
+                                id="password"
+                                name="password" 
+                                class="form-input"
+                                placeholder="Enter your password"
+                            >
+                        </div>
+                        <p class="form-hint">
+                            <i class="fas fa-info-circle"></i> Password may be empty if created via Mikrotik
+                        </p>
+                    </div>
+
+                    <button type="submit" class="submit-btn">
+                        <i class="fas fa-sign-in-alt"></i> Login to Network
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const btnHotspot = document.getElementById('btnHotspot');
+        const btnMetered = document.getElementById('btnMetered');
+        const hotspotSection = document.getElementById('hotspotSection');
+        const meteredSection = document.getElementById('meteredSection');
+
+        btnHotspot.addEventListener('click', () => {
+            btnHotspot.classList.add('active');
+            btnMetered.classList.remove('active');
+            hotspotSection.classList.add('active');
+            meteredSection.classList.remove('active');
+        });
+
+        btnMetered.addEventListener('click', () => {
+            btnMetered.classList.add('active');
+            btnHotspot.classList.remove('active');
+            meteredSection.classList.add('active');
+            hotspotSection.classList.remove('active');
+        });
+
+        function selectPackage(packageId, button) {
+            // Remove selection from all cards
+            document.querySelectorAll('.package-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            
+            // Add selection to clicked card
+            const card = button.closest('.package-card');
+            card.classList.add('selected');
+            
+            // Update hidden input
+            document.getElementById('selectedPackageId').value = packageId;
+            
+            // Enable connect button
+            document.getElementById('connectHotspotBtn').disabled = false;
+        }
+    </script>
+</body>
+</html>
+
+
+
+----- EXISTING SECTIONS THAT WORK -----
+
+📁 routes/web.php
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\{
+    ProfileController,
+    DashboardController,
+    InvoiceController,
+    ChatsController,
+    CustomerController,
+    DhcpController,
+    DeviceController,
+    ReportController,
+    SettingController,
+    ControlPanelController,
+    MetricsController,
+    LogsController,
+    ServicesController,
+    MikrotikApiController,
+    MikrotikTestController,
+    CaptivePortalController,
+    PackageController,
+    AuthenticationController,
+    SuperAdminLoginController,
+    UserManagementController,
+    ConnectionController,
+    TerminalController
+};
+
+/*
+|--------------------------------------------------------------------------
+| Public Routes
+|--------------------------------------------------------------------------
+*/
+
+// Landing / welcome
+Route::get('/', function () {
+    return view('welcome');
+});
+
+// =======================
+// CONNECT (PUBLIC UI)
+// =======================
+Route::match(['get', 'post'], '/connect', [ConnectionController::class, 'index'])
+    ->name('connect.index');
+
+Route::post('/connect/hotspot', [ConnectionController::class, 'connectHotspot'])
+    ->name('connect.hotspot');
+
+Route::post('/connect/metered', [ConnectionController::class, 'connectMetered'])
+    ->name('connect.metered');
+
+Route::get('/connection/{connection}', [ConnectionController::class, 'status'])
+    ->name('connection.status');
+
+Route::get('/status', [ConnectionController::class, 'status'])
+    ->name('status.hotspot');
+
+
+// =======================
+// PUBLIC CAPTIVE PORTAL
+// =======================
+/* Route::get('/portal', [CaptivePortalController::class, 'landing'])
+    ->name('portal.landing');
+
+Route::post('/portal/pppoe', [CaptivePortalController::class, 'createPppoe'])
+    ->name('portal.pppoe');
+
+Route::post('/portal/hotspot', [CaptivePortalController::class, 'createHotspotSession'])
+    ->name('portal.hotspot');
+
+Route::post('/portal/metered', [CaptivePortalController::class, 'createMeteredUser'])
+    ->name('portal.metered');
+
+// Payment (M-Pesa)
+Route::post('/portal/payment/stk', [CaptivePortalController::class, 'initiateStk'])
+    ->name('portal.payment.stk');
+
+Route::post('/portal/payment/webhook', [CaptivePortalController::class, 'paymentWebhook'])
+    ->name('portal.payment.webhook');  */
+
+
+// =======================
+// MIKROTIK PUBLIC APIs
+// =======================
+Route::get('/mikrotik/hotspot/active', [MikrotikApiController::class, 'hotspotActive'])->name('mikrotik.hotspot.active');
+Route::get('/mikrotik/hotspot/users', [MikrotikApiController::class, 'hotspotUsers'])->name('mikrotik.hotspot.users');
+Route::get('/mikrotik/hotspot/hosts', [MikrotikApiController::class, 'hotspotHosts'])->name('mikrotik.hotspot.hosts');
+Route::get('/mikrotik/hotspot/cookies', [MikrotikApiController::class, 'hotspotCookies'])
+    ->name('mikrotik.hotspot.cookies');
+
+/*
+|--------------------------------------------------------------------------
+| Authenticated & Verified Routes (ADMIN / STAFF)
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth', 'verified'])->group(function () {
+
+    // Dashboard
+    Route::get('/dashboard', [DashboardController::class, 'index'])
+        ->name('dashboard');
+
+    Route::get('/dashboard/refresh', [DashboardController::class, 'refresh']);
+    Route::get('/dashboard/data', [DashboardController::class, 'data']);
+
+    // Invoices
+    Route::get('/invoices', [InvoiceController::class, 'index'])
+        ->name('invoices.index');
+
+    // Customers
+    Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
+    Route::get('/customers/section/{section}', [CustomerController::class, 'section'])->name('customers.section');
+    Route::post('/customers/disconnect', [CustomerController::class, 'disconnect'])->name('customers.disconnect');
+    Route::post('/customers/monitor-traffic', [CustomerController::class, 'monitorTraffic'])->name('customers.monitor');
+
+    // DHCP / Devices / Reports
+    Route::get('/dhcp', [DhcpController::class, 'index'])->name('dhcp.index');
+    Route::get('/devices', [DeviceController::class, 'index'])->name('devices.index');
+    Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+
+    // Chats
+    Route::get('/chats', [ChatsController::class, 'index'])->name('chats.index');
+    Route::post('/chats/send', [ChatsController::class, 'send'])->name('chats.send');
+    Route::delete('/chats/delete/{id}', [ChatsController::class, 'destroy'])->name('chats.delete');
+    Route::get('/chats/{phone}', [ChatsController::class, 'show'])->name('chats.show');
+
+    // Logs
+    Route::get('/logs', [LogsController::class, 'index'])->name('logs.index');
+    Route::get('/logs/fetch', [LogsController::class, 'fetch'])->name('logs.fetch');
+
+    // Services
+    Route::get('/services', [ServicesController::class, 'index'])->name('services.index');
+    Route::get('/services/create', [ServicesController::class, 'create'])->name('services.create');
+    Route::post('/services', [ServicesController::class, 'store'])->name('services.store');
+    Route::delete('/services/{service}', [ServicesController::class, 'destroy'])->name('services.destroy');
+
+    // Metrics / MikroTik
+    Route::get('/mikrotik/test', [MikrotikTestController::class, 'index'])->name('mikrotik.test');
+    Route::get('/mikrotiks', [MetricsController::class, 'index'])->name('mikrotiks.index');
+    Route::get('/metrics', [MetricsController::class, 'fetch'])->name('metrics.fetch');
+
+    // Settings & Control Panel
+    Route::get('/settings', [SettingController::class, 'index'])->name('settings.index');
+    Route::get('/control/panel', [ControlPanelController::class, 'index'])->name('control.panel');
+
+    // Terminal
+    Route::post('/terminal/run', [TerminalController::class, 'run'])->name('terminal.run');
+
+});
+
+
+/*
+|--------------------------------------------------------------------------
+| User Management (Auth Only)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('control/users')->middleware(['auth'])->group(function () {
+    Route::get('/', [UserManagementController::class, 'index'])->name('users.panel');
+    Route::get('/{user}', [UserManagementController::class, 'show']);
+    Route::post('/update/{user}', [UserManagementController::class, 'update']);
+    Route::post('/toggle-login/{user}', [UserManagementController::class, 'toggleLogin']);
+    Route::post('/reset-password/{user}', [UserManagementController::class, 'resetPassword']);
+});
+
+
+/*
+|--------------------------------------------------------------------------
+| Packages
+|--------------------------------------------------------------------------
+*/
+Route::prefix('packages')->group(function () {
+    Route::get('/', [PackageController::class, 'index'])->name('packages.index');
+    Route::get('/create', [PackageController::class, 'create'])->name('packages.create');
+    Route::post('/', [PackageController::class, 'store'])->name('packages.store');
+    Route::get('/{package}/edit', [PackageController::class, 'edit'])->name('packages.edit');
+    Route::put('/{package}', [PackageController::class, 'update'])->name('packages.update');
+    Route::delete('/{package}', [PackageController::class, 'destroy'])->name('packages.destroy');
+});
+
+// Admin Settings - Ads
+Route::prefix('settings/ads')->middleware(['auth', 'verified'])->group(function () {
+    Route::get('/', [\App\Http\Controllers\AdsController::class, 'index'])->name('ads.index');
+    Route::post('/store', [\App\Http\Controllers\AdsController::class, 'store'])->name('ads.store');
+    Route::post('/toggle/{ad}', [\App\Http\Controllers\AdsController::class, 'toggle'])->name('ads.toggle');
+    Route::delete('/delete/{ad}', [\App\Http\Controllers\AdsController::class, 'destroy'])->name('ads.destroy');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Authentication / Super Admin
+|--------------------------------------------------------------------------
+*/
+Route::get('/superadmin/login', [SuperAdminLoginController::class, 'showLoginForm'])
+    ->name('superadmin.login');
+
+Route::post('/superadmin/login', [SuperAdminLoginController::class, 'login'])
+    ->name('superadmin.login.post');
+
+Route::post('/superadmin/logout', [SuperAdminLoginController::class, 'logout'])
+    ->name('superadmin.logout');
+
+Route::middleware(['auth'])->group(function () {
+    Route::get('/authentication', [AuthenticationController::class, 'index'])->name('authentication');
+    Route::post('/authentication/{user}/verify', [AuthenticationController::class, 'verify'])->name('authentication.verify');
+    Route::delete('/authentication/{user}/delete', [AuthenticationController::class, 'destroy'])->name('authentication.delete');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Profile
+|--------------------------------------------------------------------------
+*/
+Route::middleware('auth')->group(function () {
+    Route::get('/profile', [ProfileController::class, 'edit']);
+    Route::patch('/profile', [ProfileController::class, 'update']);
+    Route::delete('/profile', [ProfileController::class, 'destroy']);
+});
+
+// Auth scaffolding
+require __DIR__ . '/auth.php';
+
+
+
+
+
+
+SMS CONFIG SETTINGS
+
+Partner ID
+Your Partner ID is 14851
+
+Api Key
+57ce1ae7896238ef9478129fa68eba38 = api key for MARCEP AGENCY
+
+Juacom Sender ID Details
+
+default sender_id = Juacom
+
+airtel sender_id = Juacom
+
+
+
+partners
+
+ID	     Partner	
+14851	MARCEP AGENCY	
+
+
+
+
+JAN 150618pm
+
+    dashboard/index.php
+    
+    @extends('layouts.app')
+
+@section('title', 'Dashboard')
+
+@section('content')
+
+<style>
+    body { background:#f5f7fa; font-family:"Inter",sans-serif; }
+    .stat-grid{ row-gap:20px; }
+    .stat-card{
+        background:#fff; border-radius:14px; height:120px; padding:18px;
+        display:flex; align-items:center; justify-content:center;
+        box-shadow:0 2px 6px rgba(0,0,0,0.06);
+        border:1px solid #e8e8e8;
+        transition:all .2s ease;
+    }
+    .stat-card:hover{ transform:translateY(-4px); box-shadow:0 6px 16px rgba(0,0,0,0.08); }
+    .stat-inner{ width:100%; display:flex; justify-content:space-between; align-items:center; }
+    .stat-number{ font-size:1.8rem; font-weight:700; margin:0; color:#111827; }
+    .stat-label{ font-size:.85rem; color:#6b7280; margin:0; }
+    .stat-icon{ font-size:2.2rem; color:#4b5563; opacity:.75; transition:.2s; }
+    .stat-card:hover .stat-icon{ opacity:1; transform:scale(1.08); }
+
+    .card-active{ border-left:5px solid #2563eb; }
+    .card-rate{ border-left:5px solid #16a34a; }
+    .card-warning{ border-left:5px solid #f59e0b; }
+    .card-unique{ border-left:5px solid #7c3aed; }
+
+    .module-box, .card {
+        background:#fff; border-radius:14px;
+        border:1px solid #e6e6e6;
+        box-shadow:0 2px 6px rgba(0,0,0,0.04);
+    }
+
+    .card-header {
+        background:#f3f4f6; font-weight:600; font-size:1rem;
+        border-bottom:1px solid #e5e7eb;
+    }
+
+    .table th {
+        background:#eef1f5; color:#374151; font-weight:600;
+    }
+
+</style>
+
+<div class="container-fluid px-4 py-4">
+
+    <h2 class="mb-4" style="font-weight:700; color:#111827;">Dashboard Overview</h2>
+
+
+    <!-- ===================== STAT CARDS ===================== -->
+    <div class="row stat-grid">
+
+        <div class="col-6 col-md-3">
+            <div class="stat-card card-active">
+                <div class="stat-inner">
+                    <div>
+                        <h3 id="active-users" class="stat-number">{{ $activeUsers ?? 0 }}</h3>
+                        <p class="stat-label">Active Users</p>
+                    </div>
+                    <i class="bi bi-people-fill stat-icon"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-6 col-md-3">
+            <div class="stat-card card-rate">
+                <div class="stat-inner">
+                    <div>
+                        <h3 id="subscription-rate" class="stat-number">{{ $subscriptionRate ?? 0 }}%</h3>
+                        <p class="stat-label">Subs Rate</p>
+                    </div>
+                    <i class="bi bi-graph-up stat-icon"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-6 col-md-3">
+            <div class="stat-card card-warning">
+                <div class="stat-inner">
+                    <div>
+                        <h3 id="total-users" class="stat-number">{{ $totalUsers ?? 0 }}</h3>
+                        <p class="stat-label">Total Users</p>
+                    </div>
+                    <i class="bi bi-person-plus-fill stat-icon"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-6 col-md-3">
+            <div class="stat-card card-unique">
+                <div class="stat-inner">
+                    <div>
+                        <h3 id="unique-visitors" class="stat-number">{{ $uniqueHosts ?? 0 }}</h3>
+                        <p class="stat-label">Unique Visitors</p>
+                    </div>
+                    <i class="bi bi-eye-fill stat-icon"></i>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+
+    <!-- ===================== SMS & REVENUE ===================== -->
+    <div class="row mt-4">
+        <div class="col-md-4">
+            <div class="card p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div><h5>Amazons SMS Balance</h5><span id="smsBalanceText">Loading...</span></div>
+                    <i class="bi bi-envelope-fill fs-3 text-secondary"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <a href="#" class="card p-3 text-dark text-decoration-none">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div><h5>KES 0</h5><span>Amount this Month</span></div>
+                    <i class="bi bi-cash fs-3 text-secondary"></i>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div><h5>Advanta SMS Bal</h5><span>0..</span></div>
+                    <i class="bi bi-box-seam fs-3 text-secondary"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ===================== SYSTEM INFO + INTERFACES ===================== -->
+    <div class="row mt-4">
+
+        <!-- SYSTEM INFO -->
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>System Status</span>
+                    <button class="btn btn-sm btn-outline-primary refresh-section" data-section="system">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+
+                <div class="card-body">
+
+                    <p id="ram-usage">
+                        RAM: {{ $latestMetrics->ram_used ?? 0 }}GB ({{ $latestMetrics->ram_percent ?? 0 }}%)
+                    </p>
+                    <div class="progress mb-3">
+                        <div class="progress-bar bg-primary"
+                             style="width: {{ $latestMetrics->ram_percent ?? 0 }}%">
+                        </div>
+                    </div>
+
+                    <p id="cpu-usage">
+                        CPU Load: {{ $latestMetrics->cpu_percent ?? 0 }}%
+                    </p>
+                    <div class="progress mb-3">
+                        <div class="progress-bar bg-info"
+                             style="width: {{ $latestMetrics->cpu_percent ?? 0 }}%">
+                        </div>
+                    </div>
+
+                    <p id="hdd-usage">
+                        HDD: {{ $latestMetrics->hdd_used ?? 0 }}GB ({{ $latestMetrics->hdd_percent ?? 0 }}%)
+                    </p>
+                    <div class="progress mb-3">
+                        <div class="progress-bar bg-warning"
+                             style="width: {{ $latestMetrics->hdd_percent ?? 0 }}%">
+                        </div>
+                    </div>
+
+                    <p id="uptime">Uptime: {{ $latestMetrics->uptime ?? '0s' }}</p>
+
+                </div>
+            </div>
+        </div>
+
+
+        <!-- INTERFACE TRAFFIC -->
+        <div class="col-md-6">
+            <div class="card h-100">
+
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Interface Traffic</span>
+                    <button class="btn btn-sm btn-outline-primary refresh-section" data-section="interface">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+
+                <div class="card-body p-0">
+                    @if(!empty($traffic))
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Interface</th>
+                                        <th>RX</th>
+                                        <th>TX</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+
+                                <tbody>
+                                    @foreach ($traffic as $iface)
+                                        <tr>
+                                            <td>{{ $iface['interface_name'] ?? '—' }}</td>
+                                            <td>{{ number_format(($iface['rx_bps'] ?? 0) / 1_000_000, 2) }} Mbps</td>
+                                            <td>{{ number_format(($iface['tx_bps'] ?? 0) / 1_000_000, 2) }} Mbps</td>
+                                            <td>
+                                                <span class="badge {{ ($iface['status'] ?? 'down') === 'up' ? 'bg-success' : 'bg-danger' }}">
+                                                    {{ ucfirst($iface['status'] ?? 'down') }}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+
+                            </table>
+                        </div>
+                    @else
+                        <p class="text-muted text-center p-3">No interface traffic found.</p>
+                    @endif
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+</div>
+
+
+<!-- ====================================================== -->
+<!-- SOCKET + AUTO REFRESH SCRIPTS -->
+<!-- ====================================================== -->
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.5.0/dist/socket.io.min.js"></script>
+
+<script>
+const socket = io("https://net1.skybrix.co.ke:9585", { transports: ['websocket'] });
+
+setInterval(() => socket.emit("dashboard.get.sms.balance", JSON.stringify({})), 1500);
+
+socket.on("dashboard.get.sms.balance", data => {
+    let bal = parseFloat(JSON.parse(data)?.smsBalance || 0).toFixed(0);
+    $('#smsBalanceText').text(bal);
+});
+
+
+$('.refresh-section').on('click', function () {
+    const section = $(this).data('section');
+    refreshSection(section);
+});
+
+function refreshSection(section) {
+    $.get(`/dashboard/refresh?section=${section}`, function (data) {
+        if (section === 'system') $('#system-status').html(data.html);
+        if (section === 'interface') $('#interface-traffic').html(data.html);
+    });
+}
+
+// Auto-refresh interfaces every 2s
+setInterval(() => refreshSection('interface'), 2000);
+</script>
+
+@endsection
+
+
+***********
+chats/index.blade:
+
+@extends('layouts.app')
+
+@section('content')
+<div class="container-fluid">
+    <div class="text-center mb-4">
+        <h1 class="h3 fw-bold text-primary">Messages Panel</h1>
+        <p class="text-muted">Send SMS, view chats, and control your communication game</p>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <!-- New Message Form -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h4 class="card-title text-secondary">New Message</h4>
+                    <form id="smsForm" action="{{ route('chats.send') }}" method="POST">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="to" class="form-label">Phone Number</label>
+                            <input type="text" name="to" id="to" placeholder="e.g. 07xx..." class="form-control">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="message" class="form-label">Message Body</label>
+                            <textarea name="message" id="message" rows="4" class="form-control" placeholder="Type your message..."></textarea>
+                            <div class="form-text" id="charCount">0 characters</div>
+                        </div>
+
+                        <div class="text-end">
+                            <button type="submit" class="btn btn-primary" id="sendBtn">
+                                <span id="sendBtnText"><i class="bi bi-send me-1"></i>Send</span>
+                                <span id="sendBtnSpinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                            </button>
+
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+  <!-- Recent Contacts -->
+<div class="col-lg-4">
+    <div class="card shadow-sm border-0 h-100">
+        <div class="card-body">
+            <h5 class="card-title d-flex justify-content-between align-items-center">
+                Recent Contacts
+                <span>
+                    <i class="bi bi-person-plus text-muted me-2" title="Add to contacts (disabled)"></i>
+                    <i class="bi bi-chat-dots text-primary" title="Chat View (see below)"></i>
+                </span>
+            </h5>
+            <hr>
+
+            <div id="recentContactsWrapper">
+    <div id="recentContactsContent">
+        @include('chats.partials.recent-contacts')
+    </div>
+
+    <div id="recentContactsLoader" class="text-center d-none mt-2">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+</div>
+
+
+        </div>
+    </div>
+</div>
+
+
+    </div>
+
+    <!-- Search and Table -->
+<div class="card shadow-sm border-0">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="card-title mb-0">All Sent Messages</h5>
+            <input type="text" id="searchInput" class="form-control w-25" placeholder="Search messages...">
+        </div>
+
+        <div id="messagesLoader" class="text-center d-none mb-3">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+
+        <div id="messagesTableWrapper">
+            @include('chats.partials.messages-table')
+        </div>
+    </div>
+</div>
+
+</div>
+
+<!-- Modal for Full Message -->
+<div class="modal fade" id="fullMessageModal" tabindex="-1" aria-labelledby="messageModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content shadow-lg">
+      <div class="modal-header">
+        <h5 class="modal-title">Full Message</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p id="modalMessageText" class="text-dark"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="resendToSame">Resend to Same</button>
+        <button class="btn btn-secondary" id="resendNew">Send to Different</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+    const msgInput = document.getElementById('message');
+    const phoneInput = document.getElementById('to');
+    const charCounter = document.getElementById('charCount');
+
+    msgInput?.addEventListener('input', function () {
+        charCounter.textContent = `${this.value.length} characters`;
+    });
+
+    function fillPhone(phone) {
+        if (confirm(`Send new SMS to ${phone}?`)) {
+            phoneInput.value = phone;
+            phoneInput.focus();
+        }
+    }
+function viewSmsThread(phone) {
+    alert("TODO: Fetch & display SMS for " + phone);
+    // You could replace alert with modal logic and AJAX fetch for message history
+}
+
+    function resendMessage(message, phone) {
+        phoneInput.value = phone;
+        msgInput.value = message;
+        charCounter.textContent = `${message.length} characters`;
+        phoneInput.focus();
+    }
+
+    let modalMessage = '';
+    let modalPhone = '';
+
+    function showFullMessage(message, phone) {
+        modalMessage = message;
+        modalPhone = phone;
+        document.getElementById('modalMessageText').textContent = message;
+        new bootstrap.Modal(document.getElementById('fullMessageModal')).show();
+    }
+
+    document.getElementById('resendToSame').addEventListener('click', () => {
+        resendMessage(modalMessage, modalPhone);
+        bootstrap.Modal.getInstance(document.getElementById('fullMessageModal')).hide();
+    });
+
+    document.getElementById('resendNew').addEventListener('click', () => {
+        resendMessage(modalMessage, '');
+        bootstrap.Modal.getInstance(document.getElementById('fullMessageModal')).hide();
+    });
+
+    // Live search
+    document.getElementById('searchInput').addEventListener('input', function () {
+        const filter = this.value.toLowerCase();
+        const rows = document.querySelectorAll("#messagesTable tbody tr");
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(filter) ? "" : "none";
+        });
+    });
+    document.getElementById('smsForm')?.addEventListener('submit', function () {
+    const btn = document.getElementById('sendBtn');
+    document.getElementById('sendBtnText').classList.add('d-none');
+    document.getElementById('sendBtnSpinner').classList.remove('d-none');
+    btn.disabled = true;
+});
+document.querySelectorAll('.delete-form').forEach(form => {
+    form.addEventListener('submit', function () {
+        const btn = form.querySelector('.delete-btn');
+        btn.querySelector('.delete-text').classList.add('d-none');
+        btn.querySelector('.spinner-border').classList.remove('d-none');
+    });
+});
+
+
+</script>
+@if (session('status'))
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1050;">
+        <div id="liveToast" class="toast align-items-center text-white bg-success border-0 show fade" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">
+                    {{ session('status') }}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const toastLive = document.getElementById('liveToast');
+        const toast = new bootstrap.Toast(toastLive);
+        toast.show();
+    </script>
+
+@endif
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    document.body.addEventListener('click', function (e) {
+        if (e.target.closest('.pagination a')) {
+            e.preventDefault();
+            const url = e.target.closest('a').getAttribute('href');
+            loadRecentContacts(url);
+        }
+    });
+
+    function loadRecentContacts(url) {
+        const wrapper = document.getElementById('recentContactsContent');
+        const loader = document.getElementById('recentContactsLoader');
+
+        wrapper.classList.add('opacity-50');
+        loader.classList.remove('d-none');
+
+        fetch(url, {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            wrapper.innerHTML = data.html;
+        })
+        .catch(err => {
+            console.error(err);
+            wrapper.innerHTML = '<p class="text-danger">Oooops!!! Failed to load contacts.</p>';
+        })
+        .finally(() => {
+            wrapper.classList.remove('opacity-50');
+            loader.classList.add('d-none');
+        });
+    }
+});
+</script>
+
+<script>
+    // Intercept pagination for messages
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('#messagesTableWrapper .pagination a')) {
+            e.preventDefault();
+            const url = e.target.closest('a').getAttribute('href');
+            if (!url) return;
+
+            const loader = document.getElementById('messagesLoader');
+            const wrapper = document.getElementById('messagesTableWrapper');
+
+            loader.classList.remove('d-none');
+            wrapper.style.opacity = 0.3;
+
+            fetch(url, {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(res => res.text())
+            .then(html => {
+                wrapper.innerHTML = html;
+                wrapper.style.opacity = 1;
+                loader.classList.add('d-none');
+            })
+            .catch(err => {
+                console.error("Error loading paginated messages:", err);
+                loader.classList.add('d-none');
+                wrapper.style.opacity = 1;
+            });
+        }
+    });
+</script>
+
+
+@endsection
+chats/partials/recent:@forelse ($recentChatsPaginated as $chat)
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <button class="btn btn-outline-secondary w-75 text-start"
+                onclick="fillPhone('{{ $chat['phone'] }}')">
+            {{ $chat['phone'] }}
+        </button>
+        <div class="btn-group">
+            <button class="btn btn-sm btn-outline-secondary" disabled title="Add to Contacts">
+                <i class="bi bi-person-plus"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-success"
+                    onclick="viewSmsThread('{{ $chat['phone'] }}')"
+                    title="View SMS thread">
+                <i class="bi bi-chat-dots"></i>
+            </button>
+        </div>
+    </div>
+@empty
+    <p class="text-center text-muted">No recent contacts.</p>
+@endforelse
+
+<div class="mt-3 d-flex justify-content-center">
+    {{ $recentChatsPaginated->appends(['tab' => 'contacts'])->links('vendor.pagination.simple-numbers') }}
+</div>
+chats/partials/messagestab;e: <div class="table-responsive">
+    <table class="table table-hover table-bordered align-middle" id="messagesTable">
+        <thead class="table-light">
+            <tr>
+                <th>Label</th>
+                <th>Phone Number</th>
+                <th>Message</th>
+                <th>Sent At</th>
+                <th>Status</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach ($allMessages as $msg)
+                <tr>
+                    <td>{{ substr($msg->phone, 0, 5) }}...{{ substr($msg->phone, -3) }}</td>
+                    <td>{{ $msg->phone }}</td>
+                    <td>
+                        <span class="text-muted">{{ Str::limit($msg->text, 30) }}</span>
+                        <a href="#" class="ms-2" onclick="showFullMessage(`{{ addslashes($msg->text) }}`, `{{ $msg->phone }}`)">[view]</a>
+                    </td>
+                    <td>{{ \Carbon\Carbon::parse($msg->sent_at)->diffForHumans() }}</td>
+                    <td><span class="badge bg-success">Sent</span></td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary me-2" onclick="resendMessage(`{{ addslashes($msg->text) }}`, `{{ $msg->phone }}`)">
+                            <i class="bi bi-arrow-repeat"></i>
+                        </button>
+                        <form method="POST" action="{{ route('chats.delete', $msg->id) }}" class="d-inline delete-form">
+                            @csrf
+                            @method('DELETE')
+                            <button class="btn btn-sm btn-outline-danger delete-btn">
+                                <span class="delete-text"><i class="bi bi-trash"></i></span>
+                                <span class="spinner-border spinner-border-sm text-danger d-none" role="status"></span>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+            @endforeach
+        </tbody>
+    </table>
+</div>
+
+<div class="mt-3 d-flex justify-content-center">
+    {{ $allMessages->appends(['tab' => 'messages'])->links('vendor.pagination.simple-numbers') }}
+</div>
+
+chatscontroller.php
+
+
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use App\Models\Message;
+use Illuminate\Pagination\LengthAwarePaginator;
+
+class ChatsController extends Controller
+{
+    public function index(Request $request)
+    {
+        // Step 1: Get list of unique phone numbers and their latest message
+        $recentChats = Message::select('phone')
+            ->distinct()
+            ->get()
+            ->map(function ($msg) {
+                $last = Message::where('phone', $msg->phone)->latest('sent_at')->first();
+
+                return [
+                    'phone' => $msg->phone,
+                    'last_message' => $last->text ?? '',
+                    'sent_at' => $last->sent_at ?? null,
+                ];
+            })
+            ->sortByDesc('sent_at')
+            ->values();
+
+        // Step 2: Paginate the recent chats manually
+        $page = $request->get('contacts_page', 1); // you can change the query param as needed
+        $perPage = 10;
+
+        $recentChatsPaginated = new LengthAwarePaginator(
+            $recentChats->forPage($page, $perPage),
+            $recentChats->count(),
+            $perPage,
+            $page,
+            [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]
+        );
+
+        // Step 3: Normal pagination for all messages
+        $allMessages = Message::latest('sent_at')->paginate(10, ['*'], 'messages_page');
+
+        // Step 4: Return the view with both paginated variables
+        return view('chats.index', compact('recentChatsPaginated', 'allMessages'));
+    }
+
+    public function send(Request $request)
+    {
+        $request->validate([
+            'to' => 'required|string',
+            'message' => 'required|string',
+        ]);
+
+        $response = Http::post('https://sms.textsms.co.ke/api/services/sendsms/', [
+            'apikey'    => '322ea13eb89cbca982933457dc115265',
+            'partnerID' => '12368',
+            'message'   => $request->message,
+            'shortcode' => 'AMAZONS LTD',
+            'mobile'    => $request->to,
+        ]);
+
+        if ($response->successful()) {
+            Message::create([
+                'phone' => $request->to,
+                'text' => $request->message,
+                'sender' => 'system',
+                'sent_at' => now(),
+            ]);
+
+            return back()->with('status', 'Message sent successfully!');
+        }
+
+        return back()->withErrors(['error' => 'Failed to send message.']);
+    }
+
+    public function destroy($id)
+    {
+        Message::findOrFail($id)->delete();
+
+        return back()->with('status', 'Message deleted successfully!');
+    }
+}
+services.php:<?php
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Third Party Services
+    |--------------------------------------------------------------------------
+    |
+    | This file is for storing the credentials for third party services such
+    | as Mailgun, Postmark, AWS and more. This file provides the de facto
+    | location for this type of information, allowing packages to have
+    | a conventional file to locate the various service credentials.
+    |
+    */
+
+    'postmark' => [
+        'token' => env('POSTMARK_TOKEN'),
+    ],
+
+    'resend' => [
+        'key' => env('RESEND_KEY'),
+    ],
+
+    'ses' => [
+        'key' => env('AWS_ACCESS_KEY_ID'),
+        'secret' => env('AWS_SECRET_ACCESS_KEY'),
+        'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+    ],
+
+    'slack' => [
+        'notifications' => [
+            'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
+            'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
+        ],
+    ],
+
+];

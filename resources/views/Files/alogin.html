@@ -1,0 +1,91 @@
+<!DOCTYPE html> 
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Status - NetBil</title>
+    <link rel="stylesheet" href="css/bootstrap.min.css">
+    <meta name="msapplication-TileColor" content="#ef4036">
+    <meta name="theme-color" content="#ef4036">
+
+    <!-- Optional fallback meta refresh (not necessary with JS but harmless) -->
+    <meta http-equiv="refresh" content="6;url=status.html">
+
+    <script>
+        let redirectTimer;
+
+        window.onload = function () {
+            // Start countdown to auto-redirect
+            redirectTimer = setTimeout(function () {
+                window.location.href = "status.html";
+            }, 3000); // 3 seconds
+        }
+
+        function cancelRedirect() {
+            clearTimeout(redirectTimer);
+        }
+    </script>
+</head>
+
+<body class="bg-light">
+    <div class="container-fluid text-center"></div>
+        <div class="row">
+            <div class="mx-auto my-3">
+                <img src="bryson.png" width="250" alt="">
+                <p class="mt-2"><strong>*️⃣UnInterupted 🛜 Unlimited</strong></p>
+            </div>
+        </div>
+    </div>
+    <div class="container-fluid">
+        <div class="container-fluid text-center">
+            <div class="col-md-10 mx-auto">
+                <div class="card py-3">
+                    <div class="card-body p-0">
+                        <div class="container-fluid p-4">
+                            <div class="text-center">
+                                <img width="100" src="wifianim.gif" alt="" class="img-fluid">
+
+                                <h2 class="text-success mt-4">Connected!</h2>
+                                <p class="lead">Thanks for choosing <b>NetBil {projectTest}</b></p>
+                                <br>
+
+                                <form action="status.html" method="post" onsubmit="cancelRedirect()">
+                                    <input type="hidden" name="mac" value="$(mac)">
+                                    <input type="hidden" name="ip" value="$(ip)">
+                                    <input type="hidden" name="error" value="$(error)">
+                                    <input type="hidden" name="signin" value="on">
+                                    <div class="text-center">
+                                        <button type="submit" class="btn btn-info btn-lg">My Status</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="text-center">
+                        Stuck on this page?  
+                        <a href="https://wa.me/+254745936445?text=help me! I am stuck at the login page!" class="btn btn-success btn-sm">
+                            Try our BOT
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row py-3">
+            <div class="col-md-6 mx-auto">
+                <p class="text-center">
+                    <a href="#" class="text-muted">
+                        &copy; 2025 <span class="text-muted">
+                            Marcep Agencies.
+                        </span>
+                    </a>
+                </p>
+                <br><br>
+                <p class="text-center mb-5">
+                    <small><em>Powered by: NetBil</em></small>
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

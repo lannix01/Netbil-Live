@@ -1,0 +1,773 @@
+# First, navigate to your Laravel project root
+cd ~/Marcep/netbil
+
+# Create the directory structure for Inventory module
+# Note: Since Inventory folder already exists, we'll create subdirectories
+mkdir -p app/Modules/Inventory/{routes,Models,Policies,Providers}
+mkdir -p app/Modules/Inventory/Http/Controllers/Inventory
+mkdir -p app/Modules/Inventory/Database/{Migrations,Seeders}
+
+# Create the service provider file
+touch app/Modules/Inventory/Providers/InventoryServiceProvider.php
+
+# Create the policy file
+touch app/Modules/Inventory/Policies/InventoryPolicy.php
+
+# Create the routes file
+touch app/Modules/Inventory/routes/web.php
+
+# Create model files
+touch app/Modules/Inventory/Models/InventoryDepartment.php
+touch app/Modules/Inventory/Models/InventoryItemGroup.php
+touch app/Modules/Inventory/Models/InventoryItem.php
+touch app/Modules/Inventory/Models/InventoryStockReceipt.php
+touch app/Modules/Inventory/Models/InventoryStockReceiptLine.php
+touch app/Modules/Inventory/Models/InventoryTechnicianItemAssignment.php
+touch app/Modules/Inventory/Models/InventoryItemDeployment.php
+touch app/Modules/Inventory/Models/InventoryLog.php
+
+# Create controller files
+touch app/Modules/Inventory/Http/Controllers/Inventory/ItemGroupController.php
+touch app/Modules/Inventory/Http/Controllers/Inventory/ItemController.php
+touch app/Modules/Inventory/Http/Controllers/Inventory/StockReceiptController.php
+touch app/Modules/Inventory/Http/Controllers/Inventory/AssignmentController.php
+touch app/Modules/Inventory/Http/Controllers/Inventory/TechnicianInventoryController.php
+touch app/Modules/Inventory/Http/Controllers/Inventory/DeploymentController.php
+touch app/Modules/Inventory/Http/Controllers/Inventory/LogController.php
+
+# Create seeder file
+touch app/Modules/Inventory/Database/Seeders/InventorySeeder.php
+
+# Create migration files - using current date prefix
+# Note: The year 2026 in your example seems like a typo, using 2024 instead
+touch app/Modules/Inventory/Database/Migrations/2024_01_24_000001_create_inventory_departments_table.php
+touch app/Modules/Inventory/Database/Migrations/2024_01_24_000002_create_inventory_item_groups_table.php
+touch app/Modules/Inventory/Database/Migrations/2024_01_24_000003_create_inventory_items_table.php
+touch app/Modules/Inventory/Database/Migrations/2024_01_24_000004_create_inventory_stock_receipts_table.php
+touch app/Modules/Inventory/Database/Migrations/2024_01_24_000005_create_inventory_stock_receipt_lines_table.php
+touch app/Modules/Inventory/Database/Migrations/2024_01_24_000006_create_inventory_technician_item_assignments_table.php
+touch app/Modules/Inventory/Database/Migrations/2024_01_24_000007_create_inventory_item_deployments_table.php
+touch app/Modules/Inventory/Database/Migrations/2024_01_24_000008_create_inventory_logs_table.php
+touch app/Modules/Inventory/Database/Migrations/2024_01_24_000009_add_inventory_fields_to_users_table.php
+
+
+
+
+
+
+
+
+working dashboard:
+
+@extends('inventory::layout')
+
+@section('page-title', 'Dashboard')
+@section('page-subtitle', 'Quick overview of stock health, field activity, and audit trail.')
+
+@section('page-actions')
+    <a class="inv-pillbtn inv-pillbtn--dark" href="{{ route('inventory.items.index') }}" data-inv-loading>
+        <i class="bi bi-box-seam"></i> Items
+    </a>
+    <a class="inv-pillbtn" href="{{ route('inventory.receipts.create') }}" data-inv-loading>
+        <i class="bi bi-inbox-arrow-down"></i> Receive
+    </a>
+    <a class="inv-pillbtn" href="{{ route('inventory.team_assignments.index') }}" data-inv-loading>
+        <i class="bi bi-people"></i> Team Assign
+    </a>
+@endsection
+
+@section('inventory-content')
+@php
+    $u = auth('inventory')->user();
+
+    $items = $items ?? 0;
+    $lowStock = $lowStock ?? 0;
+    $teams = $teams ?? 0;
+    $logs7d = $logs7d ?? 0;
+
+    $name = $u?->name ?? 'there';
+    $loading = request()->boolean('loading');
+@endphp
+
+<style>
+    /* ===== Inventory Dashboard (NetBil-like spacing + cards) ===== */
+    .inv-dashboard { padding-bottom: 1rem; }
+
+    /* ===== PILL BUTTONS (make ALL dashboard links feel like UI controls) ===== */
+    .inv-pillbtn{
+        display:inline-flex;
+        align-items:center;
+        gap:.45rem;
+        padding: .42rem .75rem;
+        border-radius: 999px;
+        border: 1px solid rgba(2,6,23,.10);
+        background: #fff;
+        color: var(--text);
+        font-weight: 900;
+        font-size: 12px;
+        text-decoration:none !important;
+        box-shadow: 0 10px 22px rgba(2,6,23,.06);
+        transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease, background .14s ease;
+        user-select:none;
+        white-space:nowrap;
+    }
+    .inv-pillbtn i{ font-size: 14px; line-height: 1; opacity: .9; }
+    .inv-pillbtn:hover{
+        transform: translateY(-1px);
+        box-shadow: 0 16px 30px rgba(2,6,23,.10);
+        border-color: rgba(2,6,23,.18);
+        color: var(--text);
+        background: #fbfcff;
+    }
+    .inv-pillbtn:active{
+        transform: translateY(0px);
+        box-shadow: 0 10px 22px rgba(2,6,23,.08);
+    }
+    .inv-pillbtn--dark{
+        background: #0b1220;
+        border-color: #0b1220;
+        color: #fff;
+    }
+    .inv-pillbtn--dark:hover{ color:#fff; background:#0b1220; border-color:#0b1220; }
+    .inv-pillbtn--soft{
+        background: rgba(2,6,23,.04);
+        border-color: rgba(2,6,23,.08);
+    }
+
+    /* Optional: small icon "chip" inside pills */
+    .inv-pill-ico{
+        width: 22px;
+        height: 22px;
+        border-radius: 999px;
+        display:grid;
+        place-items:center;
+        background: rgba(2,6,23,.06);
+        border: 1px solid rgba(2,6,23,.06);
+    }
+    .inv-pillbtn--dark .inv-pill-ico{
+        background: rgba(255,255,255,.14);
+        border-color: rgba(255,255,255,.14);
+    }
+
+    /* ===== Make simple links UNDER DASHBOARD look like pill buttons ===== */
+    .inv-linkpill{
+        display:inline-flex;
+        align-items:center;
+        gap:.5rem;
+        padding: .40rem .70rem;
+        border-radius: 999px;
+        border: 1px solid rgba(2,6,23,.10);
+        background: #fff;
+        color: var(--text);
+        font-weight: 900;
+        font-size: 12px;
+        text-decoration:none !important;
+        box-shadow: 0 10px 22px rgba(2,6,23,.06);
+        transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease, background .14s ease;
+        user-select:none;
+        white-space:nowrap;
+    }
+    .inv-linkpill i{ font-size: 13px; opacity:.9; }
+    .inv-linkpill:hover{
+        transform: translateY(-1px);
+        box-shadow: 0 16px 30px rgba(2,6,23,.10);
+        border-color: rgba(2,6,23,.18);
+        color: var(--text);
+        background: #fbfcff;
+    }
+    .inv-linkpill--danger{
+        border-color: rgba(220,38,38,.25);
+        background: rgba(220,38,38,.04);
+    }
+    .inv-linkpill--danger:hover{
+        border-color: rgba(220,38,38,.40);
+        background: rgba(220,38,38,.06);
+    }
+
+    /* ===== Hero ===== */
+    .inv-hero {
+        background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+        border: 1px solid var(--border);
+    }
+    .inv-hero-title { font-weight: 900; letter-spacing: -0.02em; margin:0; }
+    .inv-hero-sub { color: var(--muted); font-size: 13px; margin-top: .35rem; }
+
+    /* ===== Stats row: spaced cards ===== */
+    .inv-stat-grid{
+        display:grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+        margin-bottom: 14px;
+    }
+    @media (max-width: 1199.98px){ .inv-stat-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 575.98px){ .inv-stat-grid{ grid-template-columns: 1fr; } }
+
+    .inv-stat-card{
+        position:relative;
+        overflow:hidden;
+        padding: 16px !important;
+        border-radius: 16px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        box-shadow: 0 10px 24px rgba(2,6,23,.06);
+        transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+        cursor: default;
+        min-height: 96px;
+    }
+    .inv-stat-card:hover{
+        transform: translateY(-2px);
+        box-shadow: 0 18px 38px rgba(2,6,23,.10);
+        border-color: rgba(2,6,23,.14);
+    }
+
+    /* Left color bar like NetBil */
+    .inv-stat-card:before{
+        content:'';
+        position:absolute;
+        left:0;
+        top:0;
+        bottom:0;
+        width: 4px;
+        background: #2563eb;
+        opacity: .95;
+    }
+    .inv-stat--items:before{ background:#2563eb; }
+    .inv-stat--low:before{ background:#f59e0b; }
+    .inv-stat--teams:before{ background:#7c3aed; }
+    .inv-stat--logs:before{ background:#10b981; }
+
+    .inv-stat-top{
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap: 10px;
+    }
+    .inv-stat-left{ min-width:0; }
+    .inv-stat-value{
+        font-size: 22px;
+        font-weight: 900;
+        letter-spacing: -.02em;
+        margin: 0;
+        line-height: 1.1;
+    }
+    .inv-stat-label{
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .inv-stat-ico{
+        width: 44px;
+        height: 44px;
+        border-radius: 14px;
+        display:grid;
+        place-items:center;
+        border: 1px solid var(--border);
+        background: #fff;
+        box-shadow: 0 10px 20px rgba(2,6,23,.05);
+        transition: transform .14s ease;
+        flex: 0 0 auto;
+    }
+    .inv-stat-card:hover .inv-stat-ico{ transform: scale(1.06); }
+    .inv-stat-ico i{
+        font-size: 20px;
+        opacity: .85;
+        color: #0b1220;
+    }
+
+    /* NetBil-ish mini KPI row */
+    .inv-mini-row{
+        display:grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+        margin-bottom: 14px;
+    }
+    @media (max-width: 991.98px){ .inv-mini-row{ grid-template-columns: 1fr; } }
+
+    .inv-mini-card{
+        padding: 14px !important;
+        border-radius: 16px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        box-shadow: 0 10px 24px rgba(2,6,23,.06);
+        transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+    }
+    .inv-mini-card:hover{
+        transform: translateY(-2px);
+        box-shadow: 0 18px 38px rgba(2,6,23,.10);
+        border-color: rgba(2,6,23,.14);
+    }
+    .inv-mini-top{
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap:10px;
+    }
+    .inv-mini-title{
+        font-weight: 900;
+        margin:0;
+        font-size: 13px;
+        letter-spacing:.2px;
+    }
+    .inv-mini-value{
+        margin-top: 8px;
+        display:flex;
+        flex-wrap:wrap;
+        gap: 8px;
+        align-items:center;
+    }
+    .inv-mini-ico{
+        width: 38px;
+        height: 38px;
+        border-radius: 14px;
+        display:grid;
+        place-items:center;
+        background: rgba(2,6,23,.06);
+        border: 1px solid rgba(2,6,23,.06);
+        flex: 0 0 auto;
+    }
+    .inv-mini-ico i{ font-size: 18px; opacity:.85; }
+
+    /* Bottom: two big panels */
+    .inv-bottom-grid{
+        display:grid;
+        grid-template-columns: 1.1fr .9fr;
+        gap: 14px;
+        align-items: stretch;
+    }
+    @media (max-width: 991.98px){
+        .inv-bottom-grid{ grid-template-columns: 1fr; }
+    }
+
+    .inv-panel{
+        border-radius: 16px;
+        overflow:hidden;
+        background: var(--card);
+        border: 1px solid var(--border);
+        box-shadow: 0 14px 34px rgba(2,6,23,.06);
+    }
+    .inv-panel-head{
+        padding: 12px 14px;
+        background: #fbfcff;
+        border-bottom: 1px solid var(--border);
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap: 10px;
+    }
+    .inv-panel-title{
+        font-weight: 900;
+        margin:0;
+        font-size: 13px;
+        letter-spacing:.2px;
+    }
+    .inv-panel-action{
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: #fff;
+        display:grid;
+        place-items:center;
+        color: #0b1220;
+        box-shadow: 0 10px 20px rgba(2,6,23,.05);
+        transition: transform .14s ease, box-shadow .14s ease;
+        text-decoration:none !important;
+    }
+    .inv-panel-action:hover{
+        transform: translateY(-1px) scale(1.04);
+        box-shadow: 0 16px 28px rgba(2,6,23,.10);
+        color:#0b1220;
+    }
+    .inv-panel-body{ padding: 14px; }
+
+    /* Graph placeholder */
+    .inv-graph-box{
+        border-radius: 14px;
+        border: 1px dashed rgba(2,6,23,.18);
+        background: rgba(248,250,252,.85);
+        min-height: 320px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        padding: 16px;
+    }
+    .inv-graph-empty{
+        text-align:center;
+        max-width: 460px;
+        color: var(--muted);
+    }
+    .inv-graph-badge{
+        width: 60px;
+        height: 60px;
+        border-radius: 18px;
+        margin: 0 auto 12px auto;
+        display:grid;
+        place-items:center;
+        background: #fff;
+        border: 1px solid var(--border);
+        box-shadow: 0 12px 24px rgba(2,6,23,.06);
+    }
+    .inv-graph-badge i{ font-size: 22px; opacity:.85; color:#0b1220; }
+    .inv-graph-empty .t{ font-weight: 900; color:#0b1220; }
+    .inv-graph-empty .s{ margin-top: 6px; font-size: 12px; line-height: 1.35; }
+
+    /* Quick actions grid */
+    .inv-qa-grid{
+        display:grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+    @media (max-width: 1199.98px){
+        .inv-qa-grid{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 991.98px){
+        .inv-qa-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 575.98px){
+        .inv-qa-grid{ grid-template-columns: 1fr; }
+    }
+
+    .inv-qa{
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap: 10px;
+        padding: 12px 12px;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        background: #fff;
+        text-decoration:none !important;
+        color: var(--text);
+        box-shadow: 0 10px 22px rgba(2,6,23,.06);
+        transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+        min-height: 84px;
+    }
+    .inv-qa:hover{
+        transform: translateY(-2px);
+        box-shadow: 0 18px 36px rgba(2,6,23,.10);
+        border-color: rgba(2,6,23,.14);
+        color: var(--text);
+    }
+
+    .inv-qa-left{ min-width:0; }
+    .inv-qa-title{
+        font-weight: 900;
+        font-size: 13px;
+        margin: 0;
+        line-height: 1.15;
+    }
+    .inv-qa-sub{
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.2;
+        overflow:hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 220px;
+    }
+
+    .inv-qa-ico{
+        width: 42px;
+        height: 42px;
+        border-radius: 16px;
+        display:grid;
+        place-items:center;
+        background: rgba(2,6,23,.06);
+        border: 1px solid rgba(2,6,23,.06);
+        flex: 0 0 auto;
+        transition: transform .14s ease;
+    }
+    .inv-qa:hover .inv-qa-ico{ transform: scale(1.08); }
+    .inv-qa-ico i{ font-size: 18px; opacity:.88; color:#0b1220; }
+
+    /* Counter animation */
+    @keyframes invCountUp { from { opacity:0; transform: translateY(6px); } to { opacity:1; transform: translateY(0); } }
+    .inv-stat-value{ animation: invCountUp .35s ease forwards; }
+</style>
+
+<div class="inv-dashboard">
+    @if($loading)
+        <div class="inv-card p-4">
+            <div class="inv-skeleton inv-skel-row lg" style="width:240px;"></div>
+            <div class="inv-skeleton inv-skel-row" style="width:360px;"></div>
+            <div class="inv-skeleton inv-skel-row sm" style="width:200px;"></div>
+        </div>
+    @else
+        <div class="inv-card p-4 mb-3 inv-hero">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+                <div>
+                    <h3 class="inv-hero-title mb-0">Dashboard Overview</h3>
+                    <div class="inv-hero-sub">Welcome back, <strong>{{ $name }}</strong>.</div>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a class="inv-pillbtn inv-pillbtn--dark" href="{{ route('inventory.items.index') }}" data-inv-loading>
+                        <i class="bi bi-box-seam"></i> Items
+                    </a>
+                    <a class="inv-pillbtn" href="{{ route('inventory.receipts.create') }}" data-inv-loading>
+                        <i class="bi bi-inbox-arrow-down"></i> Receive
+                    </a>
+                    <a class="inv-pillbtn" href="{{ route('inventory.team_assignments.index') }}" data-inv-loading>
+                        <i class="bi bi-people"></i> Team Assign
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="inv-stat-grid">
+            <div class="inv-stat-card inv-stat--items">
+                <div class="inv-stat-top">
+                    <div class="inv-stat-left">
+                        <p class="inv-stat-value mb-0" data-target="{{ (int)$items }}">0</p>
+                        <div class="inv-stat-label">Total Items</div>
+                    </div>
+                    <div class="inv-stat-ico" title="Items"><i class="bi bi-box-seam"></i></div>
+                </div>
+            </div>
+
+            <div class="inv-stat-card inv-stat--low">
+                <div class="inv-stat-top">
+                    <div class="inv-stat-left">
+                        <p class="inv-stat-value mb-0" data-target="{{ (int)$lowStock }}">0</p>
+                        <div class="inv-stat-label">Low Stock</div>
+                    </div>
+                    <div class="inv-stat-ico" title="Alerts"><i class="bi bi-exclamation-triangle"></i></div>
+                </div>
+            </div>
+
+            <div class="inv-stat-card inv-stat--logs">
+                <div class="inv-stat-top">
+                    <div class="inv-stat-left">
+                        <p class="inv-stat-value mb-0" data-target="{{ (int)$logs7d }}">0</p>
+                        <div class="inv-stat-label">Logs (7 days)</div>
+                    </div>
+                    <div class="inv-stat-ico" title="Logs"><i class="bi bi-journal-text"></i></div>
+                </div>
+            </div>
+
+            <div class="inv-stat-card inv-stat--teams">
+                <div class="inv-stat-top">
+                    <div class="inv-stat-left">
+                        <p class="inv-stat-value mb-0" data-target="{{ (int)$teams }}">0</p>
+                        <div class="inv-stat-label">Teams</div>
+                    </div>
+                    <div class="inv-stat-ico" title="Teams"><i class="bi bi-people"></i></div>
+                </div>
+            </div>
+        </div>
+
+        {{-- MINI ROW: links become pill buttons (no more plain anchors) --}}
+        <div class="inv-mini-row">
+            <div class="inv-mini-card">
+                <div class="inv-mini-top">
+                    <div>
+                        <p class="inv-mini-title mb-0">Low Stock Alerts</p>
+
+                        <div class="inv-mini-value">
+                            <a href="{{ route('inventory.alerts.low_stock') }}" class="inv-linkpill inv-linkpill--danger" data-inv-loading>
+                                <span class="inv-pill-ico"><i class="bi bi-bell"></i></span>
+                                Open alerts
+                            </a>
+
+                            <a href="{{ route('inventory.items.index') }}?q=" class="inv-linkpill" data-inv-loading>
+                                <span class="inv-pill-ico"><i class="bi bi-search"></i></span>
+                                Search items
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="inv-mini-ico" title="Alerts"><i class="bi bi-bell"></i></div>
+                </div>
+            </div>
+
+            <div class="inv-mini-card">
+                <div class="inv-mini-top">
+                    <div>
+                        <p class="inv-mini-title mb-0">Admin Deploy</p>
+
+                        <div class="inv-mini-value">
+                            <a href="{{ route('inventory.admin.deploy.create') }}" class="inv-linkpill inv-linkpill--soft" data-inv-loading>
+                                <span class="inv-pill-ico"><i class="bi bi-shield-lock"></i></span>
+                                Open form
+                            </a>
+
+                            <a href="{{ route('inventory.deployments.index') }}" class="inv-linkpill" data-inv-loading>
+                                <span class="inv-pill-ico"><i class="bi bi-truck"></i></span>
+                                View deployments
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="inv-mini-ico" title="Deploy"><i class="bi bi-truck"></i></div>
+                </div>
+            </div>
+
+            <div class="inv-mini-card">
+                <div class="inv-mini-top">
+                    <div>
+                        <p class="inv-mini-title mb-0">Audit Logs</p>
+
+                        <div class="inv-mini-value">
+                            <a href="{{ route('inventory.logs.index') }}" class="inv-linkpill" data-inv-loading>
+                                <span class="inv-pill-ico"><i class="bi bi-list-check"></i></span>
+                                Open logs
+                            </a>
+
+                            <a href="{{ route('inventory.movements.index') }}" class="inv-linkpill" data-inv-loading>
+                                <span class="inv-pill-ico"><i class="bi bi-arrow-left-right"></i></span>
+                                Movements
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="inv-mini-ico" title="Audit"><i class="bi bi-journal-text"></i></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="inv-bottom-grid">
+            <div class="inv-panel">
+                <div class="inv-panel-head">
+                    <div>
+                        <p class="inv-panel-title mb-0">System Status / Analytics</p>
+                    </div>
+                    <a class="inv-panel-action" href="{{ route('inventory.dashboard') }}" title="Refresh" data-inv-loading>
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </a>
+                </div>
+                <div class="inv-panel-body">
+                    <div class="inv-graph-box">
+                        <div class="inv-graph-empty">
+                            <div class="inv-graph-badge"><i class="bi bi-graph-up"></i></div>
+                            <div class="t">Charts coming soon</div>
+                            <div class="s">
+                                Next: stock movement over time, low-stock trend, and deployments per tech/team.
+                            </div>
+
+                            <div class="mt-3 d-flex justify-content-center gap-2 flex-wrap">
+                                <a class="inv-linkpill" href="{{ route('inventory.logs.index') }}" data-inv-loading>
+                                    <span class="inv-pill-ico"><i class="bi bi-journal-text"></i></span>
+                                    View logs
+                                </a>
+                                <a class="inv-linkpill" href="{{ route('inventory.alerts.low_stock') }}" data-inv-loading>
+                                    <span class="inv-pill-ico"><i class="bi bi-bell"></i></span>
+                                    Low stock
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="inv-panel">
+                <div class="inv-panel-head">
+                    <div>
+                        <p class="inv-panel-title mb-0">Quick actions</p>
+                    </div>
+                    <a class="inv-panel-action" href="{{ route('inventory.dashboard') }}" title="Refresh" data-inv-loading>
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </a>
+                </div>
+
+                <div class="inv-panel-body">
+                    <div class="inv-qa-grid">
+                        <a class="inv-qa" href="{{ route('inventory.items.index') }}" data-inv-loading>
+                            <div class="inv-qa-left">
+                                <p class="inv-qa-title mb-0">Items</p>
+                                <div class="inv-qa-sub">Browse inventory</div>
+                            </div>
+                            <div class="inv-qa-ico"><i class="bi bi-box-seam"></i></div>
+                        </a>
+
+                        <a class="inv-qa" href="{{ route('inventory.receipts.create') }}" data-inv-loading>
+                            <div class="inv-qa-left">
+                                <p class="inv-qa-title mb-0">Receive</p>
+                                <div class="inv-qa-sub">Record stock receipt</div>
+                            </div>
+                            <div class="inv-qa-ico"><i class="bi bi-inbox-arrow-down"></i></div>
+                        </a>
+
+                        <a class="inv-qa" href="{{ route('inventory.assignments.index') }}" data-inv-loading>
+                            <div class="inv-qa-left">
+                                <p class="inv-qa-title mb-0">Tech Assign</p>
+                                <div class="inv-qa-sub">Allocate to technician</div>
+                            </div>
+                            <div class="inv-qa-ico"><i class="bi bi-person-plus"></i></div>
+                        </a>
+
+                        <a class="inv-qa" href="{{ route('inventory.team_assignments.index') }}" data-inv-loading>
+                            <div class="inv-qa-left">
+                                <p class="inv-qa-title mb-0">Team Assign</p>
+                                <div class="inv-qa-sub">Allocate to team pool</div>
+                            </div>
+                            <div class="inv-qa-ico"><i class="bi bi-people"></i></div>
+                        </a>
+
+                        <a class="inv-qa" href="{{ route('inventory.team_deployments.index') }}" data-inv-loading>
+                            <div class="inv-qa-left">
+                                <p class="inv-qa-title mb-0">Team Deploy</p>
+                                <div class="inv-qa-sub">Deploy to a site</div>
+                            </div>
+                            <div class="inv-qa-ico"><i class="bi bi-geo-alt"></i></div>
+                        </a>
+
+                        <a class="inv-qa" href="{{ route('inventory.movements.index') }}" data-inv-loading>
+                            <div class="inv-qa-left">
+                                <p class="inv-qa-title mb-0">Movements</p>
+                                <div class="inv-qa-sub">Transfers / returns</div>
+                            </div>
+                            <div class="inv-qa-ico"><i class="bi bi-arrow-left-right"></i></div>
+                        </a>
+
+                        <a class="inv-qa" href="{{ route('inventory.logs.index') }}" data-inv-loading>
+                            <div class="inv-qa-left">
+                                <p class="inv-qa-title mb-0">Logs</p>
+                                <div class="inv-qa-sub">Audit trail</div>
+                            </div>
+                            <div class="inv-qa-ico"><i class="bi bi-journal-text"></i></div>
+                        </a>
+
+                        <a class="inv-qa" href="{{ route('inventory.alerts.low_stock') }}" data-inv-loading>
+                            <div class="inv-qa-left">
+                                <p class="inv-qa-title mb-0">Alerts</p>
+                                <div class="inv-qa-sub">Low stock review</div>
+                            </div>
+                            <div class="inv-qa-ico"><i class="bi bi-bell"></i></div>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const animateCounter = (el, target, duration = 900) => {
+                target = parseInt(target || '0', 10) || 0;
+                const frames = Math.max(1, Math.floor(duration / 16));
+                const inc = target / frames;
+                let cur = 0;
+                let step = 0;
+
+                const t = setInterval(() => {
+                    step++;
+                    cur += inc;
+                    if (step >= frames) {
+                        el.textContent = String(target);
+                        clearInterval(t);
+                    } else {
+                        el.textContent = String(Math.floor(cur));
+                    }
+                }, 16);
+            };
+
+            document.querySelectorAll('.inv-stat-value[data-target]').forEach((el, idx) => {
+                const target = el.dataset.target || '0';
+                setTimeout(() => animateCounter(el, target, 900), idx * 80);
+            });
+        });
+        </script>
+    @endif
+</div>
+@endsection

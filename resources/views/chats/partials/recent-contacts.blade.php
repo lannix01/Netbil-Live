@@ -1,4 +1,4 @@
-@forelse ($recentChats as $chat)
+@forelse ($recentChatsPaginated as $chat)
     <div class="d-flex justify-content-between align-items-center mb-2">
         <button class="btn btn-outline-secondary w-75 text-start"
                 onclick="fillPhone('{{ $chat['phone'] }}')">
@@ -20,5 +20,5 @@
 @endforelse
 
 <div class="mt-3 d-flex justify-content-center">
-    {{ $recentChats->appends(['tab' => 'contacts'])->links('vendor.pagination.simple-numbers') }}
+    {{ $recentChatsPaginated->appends(['tab' => 'contacts'])->links('vendor.pagination.simple-numbers') }}
 </div>

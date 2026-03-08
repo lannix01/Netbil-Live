@@ -1,103 +1,119 @@
-<aside id="sidebar" class="main-sidebar bg-white border-end vh-100 position-fixed">
-    <!-- Brand Logo -->
-    <a href="{{ route('dashboard') }}" class="brand-link d-flex align-items-center p-3 border-bottom">
-        <img src="{{ asset('logo.png') }}" alt="icon" class="brand-image rounded-circle me-2" style="width:35px; height:35px;">
-        <span class="brand-text fw-semibold">NetBil</span>
+<aside id="sidebar" class="main-sidebar bg-white border-end" style="width:250px; min-height:100vh; position:fixed; top:0; left:0;">
+
+    <!-- BRAND -->
+    <a href="{{ route('dashboard') }}" 
+       class="d-flex align-items-center gap-2 px-3 py-3 border-bottom text-decoration-none">
+        <img src="{{ asset('logo.png') }}" 
+             class="rounded-circle shadow-sm" 
+             style="width:36px; height:36px; object-fit:cover;">
+        <span class="fw-semibold fs-5 text-dark">NetBil</span>
     </a>
 
-    <div class="sidebar px-2">
-        <nav class="mt-3">
-            <ul class="nav nav-pills nav-sidebar flex-column" role="menu">
-                <div class="nav-group">
-                    <div class="nav-group-header text-muted text-uppercase small">Management</div>
-                    <li class="nav-item">
-                        <a href="{{ route('dashboard') }}" class="nav-link">
-                            <i class="bi bi-speedometer2 nav-icon"></i>Dashboard
+    <!-- NAV -->
+    <nav class="py-3">
 
+        {{-- SECTION GROUP COMPONENT --}}
+        @php
+            function sectionTitle($title) {
+                return "<div class='text-uppercase small text-muted mt-3 mb-1 px-3 fw-bold'>$title</div>";
+            }
+            function navItem($route, $icon, $label) {
+                $active = request()->routeIs($route) ? 'active-link' : '';
+                return "
+                    <li>
+                        <a href='".route($route)."'
+                           class='nav-link-custom $active'>
+                            <i class='bi $icon me-2'></i>$label
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a href="{{ route('invoices.index') }}" class="nav-link">
-                            <i class="bi bi-coin nav-icon"></i>Billing
+                ";
+            }
+        @endphp
 
-                        </a>
-                    </li>
-                </div>
+        {{-- MANAGEMENT --}}
+        {!! sectionTitle('Management') !!}
+        <ul class="nav flex-column">
+            {!! navItem('dashboard', 'bi-speedometer2', 'Dashboard') !!}
+            {!! navItem('invoices.index', 'bi-coin', 'Billing') !!}
+        </ul>
 
-                <div class="nav-group mt-3">
-                    <div class="nav-group-header text-muted text-uppercase small">User Control</div>
-                    <li class="nav-item">
-                        <a href="{{ route('chats.index') }}" class="nav-link">
-                            <i class="bi bi-chat nav-icon"></i>Communications
+        {{-- USER CONTROL --}}
+        {!! sectionTitle('User Control') !!}
+        <ul class="nav flex-column">
+            {!! navItem('chats.index', 'bi-chat', 'Communications') !!}
+            {!! navItem('customers.index', 'bi-people', 'Users') !!}
+        </ul>
 
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="{{ route('customers.index') }}" class="nav-link">
-                            <i class="bi bi-people nav-icon"></i>Users
+        {{-- NETWORK --}}
+        {!! sectionTitle('Network') !!}
+        <ul class="nav flex-column">
+            {!! navItem('dhcp.index', 'bi-hdd-stack', 'IP/DHCP Pools') !!}
+            {!! navItem('devices.index', 'bi-laptop', 'Devices/Activity') !!}
+            {!! navItem('services.index', 'bi-server', 'Services') !!}
+        </ul>
 
-                        </a>
-                    </li>
-                </div>
+        {{-- ANALYTICS --}}
+        {!! sectionTitle('Analytics') !!}
+        <ul class="nav flex-column">
+            {!! navItem('reports.index', 'bi-graph-up', 'Reports') !!}
+            {!! navItem('logs.index', 'bi-journal-text', 'Logs') !!}
+        </ul>
 
-                <div class="nav-group mt-3">
-                    <div class="nav-group-header text-muted text-uppercase small">Network</div>
-                    <li class="nav-item">
-                        <a href="{{ route('dhcp.index') }}" class="nav-link">
-                            <i class="bi bi-hdd-stack nav-icon"></i>IP/DHCP Pools
+        {{-- SYSTEM --}}
+        {!! sectionTitle('System') !!}
+        <ul class="nav flex-column">
+            <li>
+                <a href="/mikrotik/test" class="nav-link-custom">
+                    <i class="bi bi-gear me-2"></i>System Settings
+                </a>
+            </li>
+            {!! navItem('control.panel', 'bi-sliders', 'Control Panel') !!}
+        </ul>
 
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="{{ route('devices.index') }}" class="nav-link">
-                            <i class="bi bi-laptop nav-icon"></i>Devices/Activity
+        {{-- FOOTER --}}
+        <div class="sidebar-footer text-muted small px-3 mt-4">
+            Logged in as:<br>
+            <strong class="text-dark">{{ Auth::user()->name }}</strong>
+        </div>
 
-                        </a>
-                    </li>
-                </div>
+    </nav>
 
-                <div class="nav-group mt-3">
-                    <div class="nav-group-header text-muted text-uppercase small">Analytics</div>
-                    <li class="nav-item">
-                        <a href="{{ route('reports.index') }}" class="nav-link">
-                            <i class="bi bi-graph-up nav-icon"></i>Reports
-
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="{{ route('logs.index') }}" class="nav-link">
-                            <i class="bi bi-journal-text me-2"></i> Logs
-                        </a>
-                    </li>
-
-                </div>
-
-                <div class="nav-group mt-3">
-                    <div class="nav-group-header text-muted text-uppercase small">System</div>
-                    <li class="nav-item">
-                        <a href="mikrotik/test" class="nav-link">
-                            <i class="bi bi-gear nav-icon"></i>System Settings
-
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="{{ route('control.panel') }}" class="nav-link">
-                            <i class="bi bi-sliders nav-icon"></i>Control Panel
-
-                        </a>
-                    </li>
-                </div>
-            </ul>
-
-            <div class="sidebar-footer mt-5 ps-2">
-
-                    <span class="nav-link small">Logged in as: <strong>{{ Auth::user()->name }}</strong></span>
-
-                <label class="form-check mt-2">
-                    <input type="checkbox" class="form-check-input" id="lockSidebar">
-                    <span class="form-check-label">Lock Sidebar</span>
-                </label>
-            </div>
-        </nav>
-    </div>
 </aside>
+
+<style>
+    .nav-link-custom {
+        display: flex;
+        align-items: center;
+        padding: 8px 14px;
+        margin: 2px 8px;
+        color: #333;
+        border-radius: 6px;
+        font-size: 0.95rem;
+        text-decoration: none;
+        transition: 0.15s ease;
+    }
+    .nav-link-custom:hover {
+        background: #f1f5f9;
+        color: #111;
+    }
+    .active-link {
+        background: #0d6efd;
+        color: white !important;
+        font-weight: 600;
+        box-shadow: 0 0 0 2px #0d6efd33;
+    }
+    .active-link:hover {
+        background: #0b5ed7;
+    }
+    /* Responsive Sidebar */
+    @media (max-width: 991px) {
+        #sidebar {
+            position: fixed;
+            left: -260px;
+            transition: left 0.25s ease;
+        }
+        #sidebar.open {
+            left: 0;
+        }
+    }
+</style>

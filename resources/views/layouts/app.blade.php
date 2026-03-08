@@ -1,156 +1,224 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="en">
 <head>
-    <meta charset="utf-8">
+    <meta charset="UTF-8">
+    <title>NetBil System</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ config('app.name', 'NetBil') }}</title>
 
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
-    <!-- Tailwind Support (if not using Vite, uncomment below) -->
-    {{-- <script src="https://cdn.tailwindcss.com"></script> --}}
-
-    <!-- Laravel Vite Assets -->
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
-
-    <style>
-        body {
-            overflow-x: hidden;
-        }
-        #sidebar {
-            width: 250px;
-            transition: margin-left 0.3s ease;
-        }
-        #sidebar.collapsed {
-            margin-left: -250px;
-        }
-        #main-content {
-            transition: margin-left 0.3s ease;
-            margin-left: 250px;
-        }
-        #main-content.expanded {
-            margin-left: 0;
-        }
-
-        @media (max-width: 768px) {
-            #main-content {
-                margin-left: 0 !important;
-            }
-        }
-         .pagination .page-link {
-        padding: 0.3rem 0.6rem;
-        font-size: 0.875rem;
-    }
-
-        .nav-link {
-            color: #333;
-            font-weight: 500;
-            display: flex;
-            align-items: center;
-            padding: 0.5rem 0.75rem;
-            white-space: nowrap;
-            border-radius: 0.375rem;
-        }
-
-        .nav-link:hover {
-            background-color: #9bc0e5;
-        }
-
-        .nav-icon {
-            font-size: 1.2rem;
-            margin-right: 0.5rem;
-        }
-
-        .brand-link {
-            display: flex;
-            align-items: center;
-            padding: 1rem;
-            text-decoration: none;
-            color: #000;
-            font-weight: bold;
-        }
-
-        .brand-image {
-            height: 32px;
-            margin-right: 0.5rem;
-        }
-
-        /* Tailwind-style Scrollbar */
-        ::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: #f1f5f9;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: #cbd5e1;
-            border-radius: 3px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: #94a3b8;
-        }
-    </style>
-
-    @stack('styles')
 </head>
-<body class="bg-gray-100 text-gray-900">
+<body class="bg-light">
 
 @auth
-    @include('layouts.navbar')
+    {{-- Navbar --}}
+    @include('components.navbar')
 
-    <div class="d-flex">
-        @include('layouts.sidebar')
+    {{-- Sidebar --}}
+    @include('components.sidebar')
 
-        <div id="main-content" class="flex-grow-1 py-4 px-3">
-            @yield('content')
-        </div>
-    </div>
-@else
-    <main class="py-5 px-4">
+    <div id="sidebar-overlay"></div>
+
+    {{-- Main content --}}
+    <main id="main-content">
         @yield('content')
     </main>
+@else
+    {{-- If user not authenticated, redirect to login --}}
+    <script>
+        window.location = "{{ route('login') }}";
+    </script>
 @endauth
 
-<!-- Bootstrap JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-    document.addEventListener("DOMContentLoaded", function () {
-        const burger = document.getElementById('burger-toggle');
-        const sidebar = document.getElementById('sidebar');
-        const main = document.getElementById('main-content');
+const sidebar = document.getElementById('sidebar');
+const burger = document.getElementById('burger-toggle');
+const burgerIcon = document.querySelector('.burger');
+const overlay = document.getElementById('sidebar-overlay');
+const main = document.getElementById('main-content');
+const SIDEBAR_STATE_KEY = 'netbil.sidebar.state';
+const DESKTOP_BREAKPOINT = 992;
 
-        burger?.addEventListener('click', () => {
-            sidebar.classList.toggle('collapsed');
-            main.classList.toggle('expanded');
-        });
+function persistSidebarState(isOpen) {
+    try {
+        window.localStorage.setItem(SIDEBAR_STATE_KEY, isOpen ? 'open' : 'closed');
+    } catch (error) {
+        // Ignore storage errors so the layout still works in restricted browsers.
+    }
+}
 
-        const lockToggle = document.getElementById('lockSidebar');
-        const isLocked = localStorage.getItem('sidebarLocked') === 'true';
+function readSidebarState() {
+    try {
+        return window.localStorage.getItem(SIDEBAR_STATE_KEY);
+    } catch (error) {
+        return null;
+    }
+}
 
-        if (isLocked) {
-            sidebar.classList.remove('collapsed');
-            lockToggle.checked = true;
+function applySidebarState(isOpen) {
+    if (!sidebar || !overlay || !burgerIcon || !main) return;
+
+    sidebar.classList.toggle('closed', !isOpen);
+    overlay.classList.toggle('show', isOpen && window.innerWidth < DESKTOP_BREAKPOINT);
+    burgerIcon.classList.toggle('active', isOpen);
+    main.style.marginLeft = window.innerWidth >= DESKTOP_BREAKPOINT && isOpen ? '250px' : '0';
+    document.body.classList.toggle('no-scroll', isOpen && window.innerWidth < DESKTOP_BREAKPOINT);
+}
+
+function openSidebar(shouldPersist = true) {
+    applySidebarState(true);
+    if (shouldPersist) persistSidebarState(true);
+}
+
+function closeSidebar(shouldPersist = true) {
+    applySidebarState(false);
+    if (shouldPersist) persistSidebarState(false);
+}
+
+if (sidebar && burger && burgerIcon && overlay) {
+    burger.addEventListener('click', () => {
+        sidebar.classList.contains('closed') ? openSidebar() : closeSidebar();
+    });
+
+    overlay.addEventListener('click', closeSidebar);
+
+    const savedSidebarState = readSidebarState();
+
+    if (savedSidebarState === 'closed') {
+        closeSidebar(false);
+    } else if (savedSidebarState === 'open') {
+        openSidebar(false);
+    } else if (window.innerWidth < DESKTOP_BREAKPOINT) {
+        closeSidebar(false);
+    } else {
+        openSidebar(false);
+    }
+
+    window.addEventListener('resize', () => {
+        applySidebarState(!sidebar.classList.contains('closed'));
+    });
+}
+
+(() => {
+    const TOAST_TTL_MS = 2000;
+    const BOUND_ATTR = 'data-netbil-autoclose';
+    const selectors = ['.nm-toast', '.rc-toast', '.toast-stack .toast', '.toast-container .toast'];
+
+    function closeEl(el) {
+        if (!el || !el.isConnected) return;
+
+        if (window.jQuery && window.jQuery.fn && typeof window.jQuery.fn.fadeOut === 'function') {
+            window.jQuery(el).fadeOut(160, () => el.remove());
+            return;
         }
 
-        lockToggle?.addEventListener('change', function () {
-            if (this.checked) {
-                localStorage.setItem('sidebarLocked', 'true');
-                sidebar.classList.remove('collapsed');
-            } else {
-                localStorage.removeItem('sidebarLocked');
-                sidebar.classList.add('collapsed');
-            }
+        el.style.transition = 'opacity .16s ease';
+        el.style.opacity = '0';
+        setTimeout(() => el.remove(), 180);
+    }
+
+    function schedule(el) {
+        if (!el || !el.isConnected || el.getAttribute(BOUND_ATTR) === '1') return;
+        el.setAttribute(BOUND_ATTR, '1');
+        setTimeout(() => closeEl(el), TOAST_TTL_MS);
+    }
+
+    function scan(root = document) {
+        if (!root || typeof root.querySelectorAll !== 'function') return;
+        selectors.forEach((selector) => {
+            root.querySelectorAll(selector).forEach(schedule);
         });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        scan();
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                mutation.addedNodes.forEach((node) => {
+                    if (!(node instanceof Element)) return;
+                    scan(node);
+                    selectors.forEach((selector) => {
+                        if (typeof node.matches === 'function' && node.matches(selector)) {
+                            schedule(node);
+                        }
+                    });
+                });
+            });
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
     });
+})();
 </script>
 
-@stack('scripts')
+<style>
+body.no-scroll {
+    overflow: hidden;
+}
+
+#main-content {
+    margin-left: 250px;
+    padding-top: 80px;
+    padding-left: 20px;
+    transition: margin-left .25s ease;
+}
+
+#sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease;
+    z-index: 1030;
+}
+#sidebar-overlay.show {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+@media (max-width: 991px) {
+    #main-content {
+        margin-left: 0;
+    }
+}
+
+.settings-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 10px;
+    background: #f8fafc;
+    overflow-x: auto;
+}
+
+.settings-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    text-decoration: none;
+    color: #444;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: all .15s ease;
+}
+
+.settings-tab:hover {
+    background: #e9eef5;
+    color: #111;
+}
+
+.settings-tab.active {
+    background: #0d6efd;
+    color: #fff;
+    font-weight: 600;
+    box-shadow: 0 0 0 2px #0d6efd22;
+}
+</style>
+
 </body>
 </html>

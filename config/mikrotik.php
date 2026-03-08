@@ -1,9 +1,9 @@
 <?php
 
 return [
-    'host' => '192.168.88.1',      // MikroTik IP
-    'user' => 'user1',             // Username
-    'pass' => '11111111',                  // Password
-    'port' => 8728,                // API port
-    'timeout' => 3                 // Seconds
+    'host' => env('MIKROTIK_HOST', '10.90.0.106'),
+    'user' => env('MIKROTIK_USER', env('MIKROTIK_USERNAME', 'user1')),
+    'pass' => env('MIKROTIK_PASS', env('MIKROTIK_PASSWORD', '11111111')),
+    'port' => (int) env('MIKROTIK_PORT', 8728),
+    'timeout' => (int) env('MIKROTIK_TIMEOUT', 3),
 ];

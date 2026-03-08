@@ -7,7 +7,14 @@ use Illuminate\Database\Eloquent\Model;
 class Customer extends Model
 {
     protected $fillable = [
-        'name', 'phone', 'email', 'address', 'status', 'package_id'
+        'name',
+        'phone',
+        'email',
+        'address',
+        'status',
+        'package_id',
+        'username',
+        'ip',
     ];
 
     public function package()
@@ -18,5 +25,10 @@ class Customer extends Model
     public function invoices()
     {
         return $this->hasMany(Invoice::class);
+    }
+
+    public function payments()
+    {
+        return $this->hasMany(Payment::class);
     }
 }

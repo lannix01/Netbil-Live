@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="pragma" content="no-cache" />
+    <meta http-equiv="expires" content="-1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BrenNet - Log In</title>
+    <link rel="stylesheet" href="css/bootstrap.min.css">
+    <meta name="msapplication-TileColor" content="#ef4036">
+    <meta name="theme-color" content="#ef4036">
+</head>
+
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-md-6 mx-auto py-4">
+                <div class="text-center my-3 mt-5">
+                    <img width="250" src="img/logo.png" alt="" class="img-fluid">
+                </div>
+                <div class="card shadow mt-5" style="border: 1px solid #0025a9;">
+                    <div class="card-header">
+                        <h6 class="text-center">Just a moment...</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="text-center" style="transform: rotate(-45deg);">
+                            <img src="img/loader.gif" alt="" loading="lazy" class="img-fluid">
+                        </div>
+                        <!--  -->
+                        <h6 id="pageMessage" style="color: #0025a9; font-weight: bold;" class="mt-3"></h6>
+                        <!-- <form name="redirect" action="http://192.168.100.6:9110" method="post"> -->
+                        <form name="redirect" action="https://login.brennet.co.ke" method="post">
+                            <input type="hidden" name="mac" value="$(mac)">
+                            <input type="hidden" name="ip" value="$(ip)">
+                            <input type="hidden" name="signin" value="on">
+                        </form>
+
+                        <form name="login" action="http://10.0.0.1/login" method="post">
+                            <input type="hidden" id="lUsername" name="username" value="$(mac)" />
+                            <input type="hidden" id="lPassword" name="password" value="$(mac)" />
+                            <input type="hidden" name="dst" value="https://login.brennet.co.ke/connected" />
+                            <input type="hidden" name="popup" value="false" />
+                        </form>
+                        <!--  -->
+                    </div>
+                    <div class="card-footer" style="background-color: #0025a9;">
+                        <p class="text-center text-light"><small>&copy; 2018 - 2023. All rights reserved.</small></p>
+                        <p class="text-center text-light mt-4"><small>Powered by: <a class="text-light"
+                                    href="mailto:nichmut43@gmail.com">LannTech</a></small></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- <script src="login.js"></script> -->
+    <script>
+        // https://www.toptal.com/developers/html-minifier
+        // https://www.toptal.com/developers/javascript-minifier
+        function proceed() {
+            var currentUrl = window.location.href;
+            if ("$(error)" == "" && currentUrl.includes('@')) {
+                document.getElementById("pageMessage").innerHTML = "Hang on as we try to log you in...";
+                var code = currentUrl.split('@')[1];
+                document.getElementById("lUsername").value = code;
+                document.getElementById("lPassword").value = code;
+                document.login.submit();
+            } else {
+                if ("$(error)".indexOf("no more sessions are allowed for user") == 0) {
+                    alert("You have reached the maximum number of devices allowed. Please disconnect one of your devices and try again.\n\nIf you disconnected one of your devices recently wait for at least 5 minutes and try again. Otherwise, contact our support team for assistance.");
+                }
+
+                if ("$(error)".indexOf("has reached traffic limit") !== -1) {
+                    alert("You have depleted your data bundle. Click OK to continue to the WiFi Portal where you can purchase a new data bundle.");
+                }
+
+                if ("$(error)".indexOf("has reached uptime limit") !== -1) {
+                    alert("Your offer has expired. Click OK to continue to the WiFi Portal where you can purchase a new data bundle.");
+                }
+
+                document.getElementById("pageMessage").innerHTML = "Hang on as we redirect you to the WiFi Portal...";
+                document.redirect.submit();
+            }
+        }
+
+        window.onload = function () {
+            proceed();
+        }
+    </script>
+</body>
+
+</html>

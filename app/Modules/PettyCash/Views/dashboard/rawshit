@@ -1,0 +1,715 @@
+meal controller: <?php
+
+namespace App\Modules\PettyCash\Controllers\Spending;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
+use App\Modules\PettyCash\Models\Batch;
+use App\Modules\PettyCash\Models\Spending;
+use Barryvdh\DomPDF\Facade\Pdf;
+
+class MealController extends Controller
+{
+    public function index(Request $request)
+    {
+        $from = $request->query('from');
+        $to = $request->query('to');
+        $batchId = $request->query('batch_id');
+
+        $query = Spending::query()
+            ->where('type', 'meal')
+            ->where('sub_type', 'lunch')
+            ->when($batchId, fn($q) => $q->where('batch_id', $batchId))
+            ->when($from, fn($q) => $q->whereDate('date', '>=', $from))
+            ->when($to, fn($q) => $q->whereDate('date', '<=', $to))
+            ->orderByDesc('date')
+            ->orderByDesc('id');
+
+        $meals = $query->paginate(20)->withQueryString();
+        $total = (float) (clone $query)->sum('amount');
+
+        $batches = Batch::orderByDesc('id')->limit(50)->get();
+
+        return view('pettycash::spendings.meals.index', compact('meals', 'total', 'from', 'to', 'batchId', 'batches'));
+    }
+
+    public function create(Request $request)
+    {
+        $batches = Batch::query()
+            ->withSum('credits as credited_total', 'amount')
+            ->withSum('spendings as spent_total', 'amount')
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get()
+            ->map(function ($b) {
+                $credited = (float)($b->credited_total ?? 0);
+                $spent = (float)($b->spent_total ?? 0);
+                $b->available_balance = $credited - $spent;
+                return $b;
+            });
+
+        $prefBatchId = $request->query('batch_id');
+
+        return view('pettycash::spendings.meals.create', compact('batches', 'prefBatchId'));
+    }
+
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'batch_id' => ['required', 'integer', 'exists:petty_batches,id'],
+            'reference' => ['nullable', 'string', 'max:255'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'transaction_cost' => ['nullable', 'numeric', 'min:0'],
+
+            'date' => ['nullable', 'date'], // for single
+            'description' => ['nullable', 'string', 'max:255'],
+
+            'mass' => ['nullable', 'boolean'],
+            'range_from' => ['nullable', 'date'],
+            'range_to' => ['nullable', 'date'],
+        ]);
+
+        $isMass = (bool)($request->input('mass') ?? false);
+
+        // Determine dates to insert
+        if ($isMass) {
+            if (empty($data['range_from']) || empty($data['range_to'])) {
+                return back()->withErrors(['range_from' => 'Range dates are required for mass disbursement.'])->withInput();
+            }
+
+            $start = Carbon::parse($data['range_from'])->startOfDay();
+            $end = Carbon::parse($data['range_to'])->startOfDay();
+
+            if ($start->gt($end)) {
+                [$start, $end] = [$end, $start];
+            }
+
+            $dates = [];
+            $cur = $start->copy();
+            while ($cur->lte($end)) {
+                $dates[] = $cur->toDateString();
+                $cur->addDay();
+            }
+        } else {
+            if (empty($data['date'])) {
+                return back()->withErrors(['date' => 'Date is required.'])->withInput();
+            }
+            $dates = [Carbon::parse($data['date'])->toDateString()];
+        }
+
+        // Balance check: total amount to spend
+        $totalSpend = (float)$data['amount'] * count($dates);
+
+        $batch = Batch::withSum('credits as credited_total', 'amount')
+            ->withSum('spendings as spent_total', 'amount')
+            ->findOrFail($data['batch_id']);
+
+        $available = (float)($batch->credited_total ?? 0) - (float)($batch->spent_total ?? 0);
+        if ($totalSpend > $available) {
+            return back()->withErrors([
+                'amount' => 'Batch does not have enough balance for this operation. Needed: '.number_format($totalSpend, 2).' Available: '.number_format($available, 2),
+            ])->withInput();
+        }
+
+        DB::transaction(function () use ($data, $dates) {
+            foreach ($dates as $d) {
+                Spending::create([
+                    'batch_id' => $data['batch_id'],
+                    'type' => 'meal',
+                    'sub_type' => 'lunch',
+                    'reference' => $data['reference'] ?? null,
+                    'amount' => $data['amount'],
+                    'transaction_cost' => $data['transaction_cost'] ?? 0,
+
+                    'date' => $d,
+                    'description' => $data['description'] ?? null,
+                ]);
+            }
+        });
+
+        return redirect()->route('petty.meals.index')->with('success', $isMass
+            ? ('Mass lunch disbursement recorded for '.count($dates).' day(s).')
+            : 'meals spending recorded.'
+        );
+    }
+
+    public function pdf(Request $request)
+    {
+        $from = $request->query('from');
+        $to = $request->query('to');
+        $batchId = $request->query('batch_id');
+
+        $meals = Spending::with(['batch'])->query()
+            ->where('type', 'meal')
+            ->where('sub_type', 'lunch')
+            ->when($batchId, fn($q) => $q->where('batch_id', $batchId))
+            ->when($from, fn($q) => $q->whereDate('date', '>=', $from))
+            ->when($to, fn($q) => $q->whereDate('date', '<=', $to))
+            ->orderByDesc('date')
+            ->get();
+
+        $total = (float) $meals->sum('amount');
+
+        $pdf = Pdf::loadView('pettycash::reports.meals_pdf', [
+            'meals' => $meals,
+            'total' => $total,
+            'from' => $from,
+            'to' => $to,
+            'batchId' => $batchId,
+        ])->setPaper('a4', 'portrait');
+
+        return $pdf->download('pettycash-meals-lunch.pdf');
+    }
+public function edit(Spending $spending)
+{
+    abort_unless($spending->type === 'meal', 404);
+
+    $batches = Batch::query()
+        ->withSum('credits as credited_total', 'amount')
+        ->withSum('spendings as spent_total', 'amount')
+        ->orderByDesc('id')
+        ->limit(50)
+        ->get()
+        ->map(function ($b) {
+            $credited = (float)($b->credited_total ?? 0);
+            $spent = (float)($b->spent_total ?? 0);
+            $b->available_balance = $credited - $spent;
+            return $b;
+        });
+
+    return view('pettycash::spendings.meals.edit', compact('spending', 'batches'));
+}
+
+public function update(Request $request, Spending $spending)
+{
+    abort_unless($spending->type === 'meal', 404);
+
+    $data = $request->validate([
+        'batch_id' => ['required', 'integer', 'exists:petty_batches,id'],
+        'reference' => ['nullable', 'string', 'max:255'],
+        'amount' => ['required', 'numeric', 'min:0.01'],
+        'transaction_cost' => ['nullable', 'numeric', 'min:0'],
+        'date' => ['required', 'date'],
+        'description' => ['nullable', 'string', 'max:255'],
+    ]);
+
+    $spending->update([
+        'batch_id' => $data['batch_id'],
+        'reference' => $data['reference'] ?? null,
+        'amount' => $data['amount'],
+        'transaction_cost' => $data['transaction_cost'] ?? 0,
+        'date' => $data['date'],
+        'description' => $data['description'] ?? null,
+    ]);
+
+    return redirect()->route('petty.meals.index')->with('success', 'Meal updated ');
+}
+
+
+}
+
+
+meals/index:@extends('pettycash::layouts.app')
+
+@section('title','Meals (Lunch)')
+
+@push('styles')
+<style>
+    .wrap{max-width:1100px;margin:0 auto}
+    .card{background:#fff;border:1px solid #e7e9f2;border-radius:14px;padding:16px;box-shadow:0 8px 30px rgba(16,24,40,.06);margin-top:12px}
+    .top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{padding:10px;border-bottom:1px solid #eef2f6;font-size:13px}
+    th{font-size:12px;color:#475467;text-align:left}
+    .btn{display:inline-block;padding:9px 12px;border-radius:10px;background:#7f56d9;color:#fff;text-decoration:none;font-weight:700;border:none;cursor:pointer}
+    .btn2{display:inline-block;padding:9px 12px;border-radius:10px;border:1px solid #d0d5dd;background:#fff;color:#344054;text-decoration:none;font-weight:700}
+    input,select{border:1px solid #d0d5dd;padding:9px 10px;border-radius:10px}
+    .muted{color:#667085;font-size:12px}
+    .row{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
+    .pill{display:inline-block;padding:4px 10px;border-radius:999px;background:#f2f4f7;font-size:12px}
+    .success{background:#ecfdf3;border:1px solid #abefc6;color:#027a48;padding:10px;border-radius:10px;margin-top:12px}
+</style>
+@endpush
+
+@section('content')
+<div class="wrap">
+    <div class="top">
+        <div>
+            <h2 style="margin:0">Meals (Lunch)</h2>
+            <div class="muted">Total in range: <span class="pill">{{ number_format($total, 2) }}</span></div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <a class="btn" href="{{ route('petty.meals.create') }}">+ New Lunch</a>
+            <a class="btn2" href="{{ route('petty.meals.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId]) }}">PDF</a>
+        </div>
+    </div>
+
+    @if(session('success'))
+        <div class="success">{{ session('success') }}</div>
+    @endif
+
+    <div class="card">
+        <form method="GET" class="row" action="{{ route('petty.meals.index') }}">
+            <div>
+                <div class="muted">From</div>
+                <input type="date" name="from" value="{{ $from }}">
+            </div>
+            <div>
+                <div class="muted">To</div>
+                <input type="date" name="to" value="{{ $to }}">
+            </div>
+            <div>
+                <div class="muted">Batch</div>
+                <select name="batch_id">
+                    <option value="">All</option>
+                    @foreach($batches as $b)
+                        <option value="{{ $b->id }}" @selected((string)$batchId === (string)$b->id)>{{ $b->batch_no }}</option>
+                    @endforeach
+                </select>
+            </div>
+
+            <button class="btn" type="submit">Filter</button>
+            <a class="btn2" href="{{ route('petty.meals.index') }}">Reset</a>
+        </form>
+
+        <table>
+            <thead>
+            <tr>
+                <th>Date</th>
+                <th>MPESA Ref</th>
+                <th>Description</th>
+                <th>Amount</th>
+                <th>Batch</th>
+                <th>Actions</th>
+
+            </tr>
+            </thead>
+            <tbody>
+            @forelse($meals as $m)
+                <tr>
+                    <td>{{ $m->date?->format('Y-m-d') }}</td>
+                    <td>{{ $m->reference }}</td>
+                    <td>{{ $m->description }}</td>
+                    <td>{{ number_format((float)$m->amount, 2) }}</td>
+                   <td>{{ $s->batch?->batch_no ?? '-' }}</td>
+                   <td><a href="{{ route('petty.meals.edit', $m->id) }}">Edit</a></td>
+
+                </tr>
+            @empty
+                <tr><td colspan="5" class="muted">No meals yet.</td></tr>
+            @endforelse
+            </tbody>
+        </table>
+
+        <div style="margin-top:12px;">{{ $meals->links() }}</div>
+    </div>
+</div>
+@endsection
+
+
+meals/create:@extends('pettycash::layouts.app')
+
+@section('title','New Lunch')
+
+@push('styles')
+<style>
+    .wrap{max-width:800px;margin:0 auto}
+    .card{background:#fff;border:1px solid #e7e9f2;border-radius:14px;padding:16px;box-shadow:0 8px 30px rgba(16,24,40,.06);margin-top:12px}
+    label{display:block;font-size:12px;color:#475467;margin:12px 0 6px}
+    input,select,textarea{width:100%;border:1px solid #d0d5dd;padding:10px;border-radius:10px}
+    .btn{display:inline-block;padding:9px 12px;border-radius:10px;background:#7f56d9;color:#fff;text-decoration:none;font-weight:700;border:none;cursor:pointer}
+    .btn2{display:inline-block;padding:9px 12px;border-radius:10px;border:1px solid #d0d5dd;background:#fff;color:#344054;text-decoration:none;font-weight:700}
+    .err{background:#fef3f2;color:#b42318;border:1px solid #fecdca;padding:10px;border-radius:10px}
+    .muted{color:#667085;font-size:12px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    @media (max-width:720px){.grid{grid-template-columns:1fr}}
+</style>
+@endpush
+
+@section('content')
+<div class="wrap">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div>
+            <h2 style="margin:0">New Lunch Spending</h2>
+            <div class="muted">Single entry OR mass disbursement across a date range.</div>
+        </div>
+        <a class="btn2" href="{{ route('petty.meals.index') }}">Back</a>
+    </div>
+
+    <div class="card">
+        @if($errors->any())
+            <div class="err">
+                @foreach($errors->all() as $e) <div>{{ $e }}</div> @endforeach
+            </div>
+        @endif
+
+        <form method="POST" action="{{ route('petty.meals.store') }}">
+            @csrf
+
+            <label>Batch</label>
+            <select name="batch_id" required>
+                <option value="">Select batch</option>
+                @foreach($batches as $b)
+                    <option value="{{ $b->id }}" @selected((string)old('batch_id', $prefBatchId) === (string)$b->id)>
+                        {{ $b->batch_no }} (Balance: {{ number_format((float)$b->available_balance, 2) }})
+                    </option>
+                @endforeach
+            </select>
+
+            <label>Mpesa REF</label>
+            <input name="reference" value="{{ old('reference') }}" />
+
+            <label>Amount (per day if mass)</label>
+            <input type="number" step="0.01" name="amount" required value="{{ old('amount') }}" />
+
+            <label>Transaction Cost </label>
+<input type="number" step="0.01" name="transaction_cost" value="{{ old('transaction_cost', 0) }}">
+
+            <label>Description (optional)</label>
+            <input name="description" value="{{ old('description') }}" />
+
+            <label style="display:flex;gap:8px;align-items:center;">
+                <input type="checkbox" name="mass" value="1" id="mass" {{ old('mass') ? 'checked' : '' }} style="width:auto">
+                Mass disbursement (choose date range)
+            </label>
+
+            <div id="singleDate">
+                <label>Date Paid (single)</label>
+                <input type="date" name="date" value="{{ old('date', date('Y-m-d')) }}">
+            </div>
+
+            <div id="rangeDates" class="grid" style="display:none;">
+                <div>
+                    <label>Range From</label>
+                    <input type="date" name="range_from" value="{{ old('range_from') }}">
+                </div>
+                <div>
+                    <label>Range To</label>
+                    <input type="date" name="range_to" value="{{ old('range_to') }}">
+                </div>
+            </div>
+
+            <div style="margin-top:14px;">
+                <button class="btn" type="submit">Save Lunch</button>
+            </div>
+        </form>
+    </div>
+</div>
+@endsection
+
+@push('scripts')
+<script>
+(function(){
+    const mass = document.getElementById('mass');
+    const singleDate = document.getElementById('singleDate');
+    const rangeDates = document.getElementById('rangeDates');
+
+    function sync(){
+        if (mass && mass.checked){
+            singleDate.style.display = 'none';
+            rangeDates.style.display = 'grid';
+        } else {
+            singleDate.style.display = 'block';
+            rangeDates.style.display = 'none';
+        }
+    }
+
+    if (mass) mass.addEventListener('change', sync);
+    sync();
+})();
+</script>
+@endpush
+
+otherscontroller:<?php
+
+namespace App\Modules\PettyCash\Controllers\Spending;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use App\Modules\PettyCash\Models\Batch;
+use App\Modules\PettyCash\Models\Respondent;
+use App\Modules\PettyCash\Models\Spending;
+use Barryvdh\DomPDF\Facade\Pdf;
+
+class OtherController extends Controller
+{
+    public function index(Request $request)
+    {
+        $from = $request->query('from');
+        $to = $request->query('to');
+        $batchId = $request->query('batch_id');
+
+        $query = Spending::query()
+            ->where('type', 'other')
+            ->when($batchId, fn($q) => $q->where('batch_id', $batchId))
+            ->when($from, fn($q) => $q->whereDate('date', '>=', $from))
+            ->when($to, fn($q) => $q->whereDate('date', '<=', $to))
+            ->orderByDesc('date')
+            ->orderByDesc('id');
+
+        $others = $query->paginate(20)->withQueryString();
+        $total = (float) (clone $query)->sum('amount');
+
+        $batches = Batch::orderByDesc('id')->limit(50)->get();
+
+        return view('pettycash::spendings.others.index', compact('others', 'total', 'from', 'to', 'batchId', 'batches'));
+    }
+
+    public function create(Request $request)
+    {
+        $batches = Batch::query()
+            ->withSum('credits as credited_total', 'amount')
+            ->withSum('spendings as spent_total', 'amount')
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get()
+            ->map(function ($b) {
+                $credited = (float)($b->credited_total ?? 0);
+                $spent = (float)($b->spent_total ?? 0);
+                $b->available_balance = $credited - $spent;
+                return $b;
+            });
+
+        $respondents = Respondent::orderBy('name')->get();
+        $prefBatchId = $request->query('batch_id');
+
+        return view('pettycash::spendings.others.create', compact('batches', 'respondents', 'prefBatchId'));
+    }
+
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'batch_id' => ['required', 'integer', 'exists:petty_batches,id'],
+            'reference' => ['nullable', 'string', 'max:255'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'date' => ['required', 'date'],
+            'respondent_id' => ['nullable', 'integer', 'exists:petty_respondents,id'],
+            'description' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        // Balance check
+        $batch = Batch::withSum('credits as credited_total', 'amount')
+            ->withSum('spendings as spent_total', 'amount')
+            ->findOrFail($data['batch_id']);
+
+        $available = (float)($batch->credited_total ?? 0) - (float)($batch->spent_total ?? 0);
+        if ((float)$data['amount'] > $available) {
+            return back()->withErrors(['amount' => 'This batch does not have enough balance.'])->withInput();
+        }
+
+        Spending::create([
+            'batch_id' => $data['batch_id'],
+            'type' => 'other',
+            'sub_type' => null,
+            'reference' => $data['reference'] ?? null,
+            'amount' => $data['amount'],
+            'date' => $data['date'],
+            'respondent_id' => $data['respondent_id'] ?? null,
+            'description' => $data['description'] ?? null,
+        ]);
+
+        return redirect()->route('petty.others.index')->with('success', 'Other spending recorded.');
+    }
+
+    public function pdf(Request $request)
+    {
+        $from = $request->query('from');
+        $to = $request->query('to');
+        $batchId = $request->query('batch_id');
+
+        $others = Spending::with(['respondent','batch'])->query()
+            ->where('type', 'other')
+            ->when($batchId, fn($q) => $q->where('batch_id', $batchId))
+            ->when($from, fn($q) => $q->whereDate('date', '>=', $from))
+            ->when($to, fn($q) => $q->whereDate('date', '<=', $to))
+            ->orderByDesc('date')
+            ->get();
+
+        $total = (float) $others->sum('amount');
+
+        $pdf = Pdf::loadView('pettycash::reports.others_pdf', [
+            'others' => $others,
+            'total' => $total,
+            'from' => $from,
+            'to' => $to,
+            'batchId' => $batchId,
+        ])->setPaper('a4', 'portrait');
+
+        return $pdf->download('pettycash-others.pdf');
+    }
+}
+
+
+others/index:@extends('pettycash::layouts.app')
+
+@section('title','Others')
+
+@push('styles')
+<style>
+    .wrap{max-width:1100px;margin:0 auto}
+    .card{background:#fff;border:1px solid #e7e9f2;border-radius:14px;padding:16px;box-shadow:0 8px 30px rgba(16,24,40,.06);margin-top:12px}
+    .top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{padding:10px;border-bottom:1px solid #eef2f6;font-size:13px}
+    th{font-size:12px;color:#475467;text-align:left}
+    .btn{display:inline-block;padding:9px 12px;border-radius:10px;background:#7f56d9;color:#fff;text-decoration:none;font-weight:700;border:none;cursor:pointer}
+    .btn2{display:inline-block;padding:9px 12px;border-radius:10px;border:1px solid #d0d5dd;background:#fff;color:#344054;text-decoration:none;font-weight:700}
+    input,select{border:1px solid #d0d5dd;padding:9px 10px;border-radius:10px}
+    .muted{color:#667085;font-size:12px}
+    .row{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
+    .pill{display:inline-block;padding:4px 10px;border-radius:999px;background:#f2f4f7;font-size:12px}
+    .success{background:#ecfdf3;border:1px solid #abefc6;color:#027a48;padding:10px;border-radius:10px;margin-top:12px}
+</style>
+@endpush
+
+@section('content')
+<div class="wrap">
+    <div class="top">
+        <div>
+            <h2 style="margin:0">Others</h2>
+            <div class="muted">Total in range: <span class="pill">{{ number_format($total, 2) }}</span></div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <a class="btn" href="{{ route('petty.others.create') }}">+ New Other</a>
+            <a class="btn2" href="{{ route('petty.others.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId]) }}">PDF</a>
+        </div>
+    </div>
+
+    @if(session('success'))
+        <div class="success">{{ session('success') }}</div>
+    @endif
+
+    <div class="card">
+        <form method="GET" class="row" action="{{ route('petty.others.index') }}">
+            <div>
+                <div class="muted">From</div>
+                <input type="date" name="from" value="{{ $from }}">
+            </div>
+            <div>
+                <div class="muted">To</div>
+                <input type="date" name="to" value="{{ $to }}">
+            </div>
+            <div>
+                <div class="muted">Batch</div>
+                <select name="batch_id">
+                    <option value="">All</option>
+                    @foreach($batches as $b)
+                        <option value="{{ $b->id }}" @selected((string)$batchId === (string)$b->id)>{{ $b->batch_no }}</option>
+                    @endforeach
+                </select>
+            </div>
+
+            <button class="btn" type="submit">Filter</button>
+            <a class="btn2" href="{{ route('petty.others.index') }}">Reset</a>
+        </form>
+
+        <table>
+            <thead>
+            <tr>
+                <th>Date</th>
+                <th>MPESA Ref</th>
+                <th>Description</th>
+                <th>Amount</th>
+                <th>Respondent</th>
+                <th>Batch</th>
+            </tr>
+            </thead>
+            <tbody>
+            @forelse($others as $o)
+                <tr>
+                    <td>{{ $o->date?->format('Y-m-d') }}</td>
+                    <td>{{ $o->reference }}</td>
+                    <td>{{ $o->description }}</td>
+                    <td>{{ number_format((float)$o->amount, 2) }}</td>
+                    <td>{{ $o->respondent_name ?? '-' }}</td>
+                    <td>{{ $s->batch?->batch_no ?? '-' }}</td>
+                </tr>
+            @empty
+                <tr><td colspan="6" class="muted">No other spendings yet.</td></tr>
+            @endforelse
+            </tbody>
+        </table>
+
+        <div style="margin-top:12px;">{{ $others->links() }}</div>
+    </div>
+</div>
+@endsection
+
+others/create:@extends('pettycash::layouts.app')
+
+@section('title','New Other Spending')
+
+@push('styles')
+<style>
+    .wrap{max-width:800px;margin:0 auto}
+    .card{background:#fff;border:1px solid #e7e9f2;border-radius:14px;padding:16px;box-shadow:0 8px 30px rgba(16,24,40,.06);margin-top:12px}
+    label{display:block;font-size:12px;color:#475467;margin:12px 0 6px}
+    input,select{width:100%;border:1px solid #d0d5dd;padding:10px;border-radius:10px}
+    .btn{display:inline-block;padding:9px 12px;border-radius:10px;background:#7f56d9;color:#fff;text-decoration:none;font-weight:700;border:none;cursor:pointer}
+    .btn2{display:inline-block;padding:9px 12px;border-radius:10px;border:1px solid #d0d5dd;background:#fff;color:#344054;text-decoration:none;font-weight:700}
+    .err{background:#fef3f2;color:#b42318;border:1px solid #fecdca;padding:10px;border-radius:10px}
+    .muted{color:#667085;font-size:12px}
+</style>
+@endpush
+
+@section('content')
+<div class="wrap">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div>
+            <h2 style="margin:0">New Other Spending</h2>
+            <div class="muted">Ref, amount, date, description, respondent.</div>
+        </div>
+        <a class="btn2" href="{{ route('petty.others.index') }}">Back</a>
+    </div>
+
+    <div class="card">
+        @if($errors->any())
+            <div class="err">@foreach($errors->all() as $e)<div>{{ $e }}</div>@endforeach</div>
+        @endif
+
+        <form method="POST" action="{{ route('petty.others.store') }}">
+            @csrf
+
+            <label>Batch</label>
+            <select name="batch_id" required>
+                <option value="">Select batch</option>
+                @foreach($batches as $b)
+                    <option value="{{ $b->id }}" @selected((string)old('batch_id', $prefBatchId) === (string)$b->id)>
+                        {{ $b->batch_no }} (Balance: {{ number_format((float)$b->available_balance,2) }})
+                    </option>
+                @endforeach
+            </select>
+
+            <label>Reference (MPESA Ref)</label>
+            <input name="reference" value="{{ old('reference') }}">
+
+            <label>Amount</label>
+            <input type="number" step="0.01" name="amount" required value="{{ old('amount') }}">
+
+            <label>Transaction Cost </label>
+<input type="number" step="0.01" name="transaction_cost" value="{{ old('transaction_cost', 0) }}">
+
+
+            <label>Date</label>
+            <input type="date" name="date" required value="{{ old('date', date('Y-m-d')) }}">
+
+            <label>Respondent (optional)</label>
+            <select name="respondent_id">
+                <option value="">Select respondent</option>
+                @foreach($respondents as $r)
+                    <option value="{{ $r->id }}" @selected((string)old('respondent_id') === (string)$r->id)>{{ $r->name }}</option>
+                @endforeach
+            </select>
+
+            <label>Description</label>
+            <input name="description" value="{{ old('description') }}">
+
+            <div style="margin-top:14px;">
+                <button class="btn" type="submit">Save Other Spending</button>
+            </div>
+        </form>
+    </div>
+</div>
+@endsection

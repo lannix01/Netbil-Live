@@ -33,6 +33,15 @@
                                 <span class="spinner-border spinner-border-sm text-danger d-none" role="status"></span>
                             </button>
                         </form>
+                        @if(in_array($msg->status ?? 'SENT', ['FAILED','PENDING']))
+    <form method="POST" action="{{ route('chats.retry', $msg->id) }}" class="d-inline">
+        @csrf
+        <button class="btn btn-sm btn-outline-warning" title="Retry">
+            <i class="bi bi-arrow-clockwise"></i>
+        </button>
+    </form>
+@endif
+
                     </td>
                 </tr>
             @endforeach

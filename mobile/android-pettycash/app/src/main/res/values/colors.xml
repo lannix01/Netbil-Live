@@ -1,0 +1,7 @@
+<resources>
+    <color name="brand_primary">#0F4C81</color>
+    <color name="brand_primary_dark">#0A355A</color>
+    <color name="brand_secondary">#2B8A78</color>
+    <color name="brand_bg">#F6F8FB</color>
+    <color name="brand_surface">#FFFFFF</color>
+</resources>

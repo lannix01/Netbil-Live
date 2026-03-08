@@ -1,0 +1,1664 @@
+openapi: 3.0.3
+info:
+  title: PettyCash API v1
+  version: 1.0.0
+  description: |
+    Android-ready API contract for Netbil PettyCash.
+    Base URL is the application host, with server URL prefix `/api/petty/v1`.
+servers:
+  - url: /api/petty/v1
+security:
+  - BearerAuth: []
+tags:
+  - name: Auth
+  - name: Batches
+  - name: Master Data
+  - name: Credits
+  - name: Spendings
+  - name: Maintenance
+  - name: Insights
+  - name: Reports
+  - name: Token Hostels
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and issue bearer token
+      operationId: pettyAuthLogin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                device_name:
+                  type: string
+                  maxLength: 100
+                device_id:
+                  type: string
+                  maxLength: 120
+                device_platform:
+                  type: string
+                  maxLength: 40
+                  example: android
+                revoke_other_sessions:
+                  type: boolean
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          token_type:
+                            type: string
+                            example: Bearer
+                          access_token:
+                            type: string
+                          expires_at:
+                            type: string
+                            format: date-time
+                            nullable: true
+                          user:
+                            $ref: '#/components/schemas/User'
+                          session:
+                            $ref: '#/components/schemas/SessionToken'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '422':
+          $ref: '#/components/responses/ValidationErrorResponse'
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current authenticated user
+      operationId: pettyAuthMe
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout current session (legacy endpoint)
+      operationId: pettyAuthLogout
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /auth/logout-all:
+    post:
+      tags: [Auth]
+      summary: Revoke all sessions for current user
+      operationId: pettyAuthLogoutAll
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                include_current:
+                  type: boolean
+                  default: true
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate current token and return a new token
+      operationId: pettyAuthRefresh
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                device_name:
+                  type: string
+                  maxLength: 100
+                device_id:
+                  type: string
+                  maxLength: 120
+                device_platform:
+                  type: string
+                  maxLength: 40
+                revoke_other_sessions:
+                  type: boolean
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          token_type:
+                            type: string
+                            example: Bearer
+                          access_token:
+                            type: string
+                          expires_at:
+                            type: string
+                            format: date-time
+                            nullable: true
+                          user:
+                            $ref: '#/components/schemas/User'
+                          session:
+                            $ref: '#/components/schemas/SessionToken'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '422':
+          $ref: '#/components/responses/ValidationErrorResponse'
+
+  /auth/tokens:
+    get:
+      tags: [Auth]
+      summary: List active sessions for current user
+      operationId: pettyAuthTokensIndex
+      responses:
+        '200':
+          description: Sessions fetched
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          tokens:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/SessionToken'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /auth/tokens/current:
+    delete:
+      tags: [Auth]
+      summary: Revoke current session token
+      operationId: pettyAuthTokensCurrentDelete
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /auth/tokens/{tokenId}:
+    delete:
+      tags: [Auth]
+      summary: Revoke a specific session token
+      operationId: pettyAuthTokensDelete
+      parameters:
+        - $ref: '#/components/parameters/TokenId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+
+  /batches/available:
+    get:
+      tags: [Batches]
+      summary: List available funding batches
+      operationId: pettyBatchesAvailable
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /masters/bikes:
+    get:
+      tags: [Master Data]
+      summary: List bikes
+      operationId: pettyMastersBikesIndex
+      parameters:
+        - $ref: '#/components/parameters/Q'
+        - name: status
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          $ref: '#/components/responses/PaginatedSuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+    post:
+      tags: [Master Data]
+      summary: Create bike
+      operationId: pettyMastersBikesStore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plate_no]
+              properties:
+                plate_no:
+                  type: string
+                model:
+                  type: string
+                status:
+                  type: string
+      responses:
+        '201':
+          $ref: '#/components/responses/CreatedResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '422':
+          $ref: '#/components/responses/ValidationErrorResponse'
+
+  /masters/bikes/{bike}:
+    patch:
+      tags: [Master Data]
+      summary: Update bike
+      operationId: pettyMastersBikesUpdate
+      parameters:
+        - $ref: '#/components/parameters/BikeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                plate_no:
+                  type: string
+                model:
+                  type: string
+                status:
+                  type: string
+                is_unroadworthy:
+                  type: boolean
+                unroadworthy_notes:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '422':
+          $ref: '#/components/responses/ValidationErrorResponse'
+    delete:
+      tags: [Master Data]
+      summary: Delete bike
+      operationId: pettyMastersBikesDestroy
+      parameters:
+        - $ref: '#/components/parameters/BikeId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '409':
+          $ref: '#/components/responses/ConflictResponse'
+
+  /masters/respondents:
+    get:
+      tags: [Master Data]
+      summary: List respondents
+      operationId: pettyMastersRespondentsIndex
+      parameters:
+        - $ref: '#/components/parameters/Q'
+        - name: category
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          $ref: '#/components/responses/PaginatedSuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+    post:
+      tags: [Master Data]
+      summary: Create respondent
+      operationId: pettyMastersRespondentsStore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                phone:
+                  type: string
+                  nullable: true
+                category:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          $ref: '#/components/responses/CreatedResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '422':
+          $ref: '#/components/responses/ValidationErrorResponse'
+
+  /masters/respondents/{respondent}:
+    patch:
+      tags: [Master Data]
+      summary: Update respondent
+      operationId: pettyMastersRespondentsUpdate
+      parameters:
+        - $ref: '#/components/parameters/RespondentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                phone:
+                  type: string
+                  nullable: true
+                category:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '422':
+          $ref: '#/components/responses/ValidationErrorResponse'
+    delete:
+      tags: [Master Data]
+      summary: Delete respondent
+      operationId: pettyMastersRespondentsDestroy
+      parameters:
+        - $ref: '#/components/parameters/RespondentId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '409':
+          $ref: '#/components/responses/ConflictResponse'
+
+  /credits:
+    get:
+      tags: [Credits]
+      summary: List credits
+      operationId: pettyCreditsIndex
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: batch_id
+          in: query
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/Q'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          $ref: '#/components/responses/PaginatedSuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+    post:
+      tags: [Credits]
+      summary: Create credit and batch
+      operationId: pettyCreditsStore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, date]
+              properties:
+                reference:
+                  type: string
+                  nullable: true
+                amount:
+                  type: number
+                  format: float
+                transaction_cost:
+                  type: number
+                  format: float
+                  nullable: true
+                date:
+                  type: string
+                  format: date
+                description:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          $ref: '#/components/responses/CreatedResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '422':
+          $ref: '#/components/responses/ValidationErrorResponse'
+
+  /credits/{credit}:
+    get:
+      tags: [Credits]
+      summary: Get one credit
+      operationId: pettyCreditsShow
+      parameters:
+        - $ref: '#/components/parameters/CreditId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+    patch:
+      tags: [Credits]
+      summary: Update credit
+      operationId: pettyCreditsUpdate
+      parameters:
+        - $ref: '#/components/parameters/CreditId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reference:
+                  type: string
+                  nullable: true
+                amount:
+                  type: number
+                  format: float
+                transaction_cost:
+                  type: number
+                  format: float
+                  nullable: true
+                date:
+                  type: string
+                  format: date
+                description:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '422':
+          $ref: '#/components/responses/ValidationErrorResponse'
+
+  /spendings:
+    get:
+      tags: [Spendings]
+      summary: List spendings
+      operationId: pettySpendingsIndex
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [bike, meal, other]
+        - name: sub_type
+          in: query
+          schema:
+            type: string
+        - name: batch_id
+          in: query
+          schema:
+            type: integer
+        - name: respondent_id
+          in: query
+          schema:
+            type: integer
+        - name: bike_id
+          in: query
+          schema:
+            type: integer
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/Q'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          $ref: '#/components/responses/PaginatedSuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+    post:
+      tags: [Spendings]
+      summary: Create spending
+      operationId: pettySpendingsStore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [funding, type, amount, date]
+              properties:
+                funding:
+                  type: string
+                  enum: [auto, single]
+                batch_id:
+                  type: integer
+                  nullable: true
+                type:
+                  type: string
+                  enum: [bike, meal, other]
+                sub_type:
+                  type: string
+                  nullable: true
+                bike_id:
+                  type: integer
+                  nullable: true
+                related_id:
+                  type: integer
+                  nullable: true
+                reference:
+                  type: string
+                  nullable: true
+                amount:
+                  type: number
+                  format: float
+                transaction_cost:
+                  type: number
+                  format: float
+                  nullable: true
+                date:
+                  type: string
+                  format: date
+                respondent_id:
+                  type: integer
+                  nullable: true
+                description:
+                  type: string
+                  nullable: true
+                particulars:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          $ref: '#/components/responses/CreatedResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '422':
+          $ref: '#/components/responses/ValidationErrorResponse'
+
+  /spendings/{spending}:
+    get:
+      tags: [Spendings]
+      summary: Get one spending
+      operationId: pettySpendingsShow
+      parameters:
+        - $ref: '#/components/parameters/SpendingId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+        '409':
+          $ref: '#/components/responses/ConflictResponse'
+    patch:
+      tags: [Spendings]
+      summary: Update spending
+      operationId: pettySpendingsUpdate
+      parameters:
+        - $ref: '#/components/parameters/SpendingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [funding]
+              properties:
+                funding:
+                  type: string
+                  enum: [auto, single]
+                batch_id:
+                  type: integer
+                  nullable: true
+                sub_type:
+                  type: string
+                  nullable: true
+                bike_id:
+                  type: integer
+                  nullable: true
+                related_id:
+                  type: integer
+                  nullable: true
+                reference:
+                  type: string
+                  nullable: true
+                amount:
+                  type: number
+                  format: float
+                transaction_cost:
+                  type: number
+                  format: float
+                  nullable: true
+                date:
+                  type: string
+                  format: date
+                respondent_id:
+                  type: integer
+                  nullable: true
+                description:
+                  type: string
+                  nullable: true
+                particulars:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '409':
+          $ref: '#/components/responses/ConflictResponse'
+        '422':
+          $ref: '#/components/responses/ValidationErrorResponse'
+    delete:
+      tags: [Spendings]
+      summary: Delete spending
+      operationId: pettySpendingsDestroy
+      parameters:
+        - $ref: '#/components/parameters/SpendingId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '409':
+          $ref: '#/components/responses/ConflictResponse'
+
+  /maintenances/schedule:
+    get:
+      tags: [Maintenance]
+      summary: Maintenance schedule
+      operationId: pettyMaintSchedule
+      parameters:
+        - $ref: '#/components/parameters/Q'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [overdue, due_soon, ok, never, unroadworthy]
+        - name: soon_days
+          in: query
+          schema:
+            type: integer
+            default: 7
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          $ref: '#/components/responses/PaginatedSuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /maintenances/history:
+    get:
+      tags: [Maintenance]
+      summary: Maintenance service history
+      operationId: pettyMaintHistory
+      parameters:
+        - $ref: '#/components/parameters/Q'
+        - name: bike_id
+          in: query
+          schema:
+            type: integer
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          $ref: '#/components/responses/PaginatedSuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /maintenances/unroadworthy:
+    get:
+      tags: [Maintenance]
+      summary: List unroadworthy bikes
+      operationId: pettyMaintUnroadworthy
+      parameters:
+        - $ref: '#/components/parameters/Q'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          $ref: '#/components/responses/PaginatedSuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /maintenances/bikes/{bike}:
+    get:
+      tags: [Maintenance]
+      summary: Bike maintenance profile
+      operationId: pettyMaintBikeShow
+      parameters:
+        - $ref: '#/components/parameters/BikeId'
+        - name: services_per_page
+          in: query
+          schema:
+            type: integer
+            enum: [10, 20, 50, 100]
+            default: 20
+        - name: maintenances_per_page
+          in: query
+          schema:
+            type: integer
+            enum: [10, 20, 50, 100]
+            default: 20
+      responses:
+        '200':
+          $ref: '#/components/responses/MultiPaginatedSuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /maintenances/bikes/{bike}/services:
+    post:
+      tags: [Maintenance]
+      summary: Record service
+      operationId: pettyMaintServicesStore
+      parameters:
+        - $ref: '#/components/parameters/BikeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service_date]
+              properties:
+                service_date:
+                  type: string
+                  format: date
+                next_due_date:
+                  type: string
+                  format: date
+                  nullable: true
+                reference:
+                  type: string
+                  nullable: true
+                work_done:
+                  type: string
+                  nullable: true
+                amount:
+                  type: number
+                  format: float
+                  nullable: true
+                transaction_cost:
+                  type: number
+                  format: float
+                  nullable: true
+      responses:
+        '201':
+          $ref: '#/components/responses/CreatedResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '422':
+          $ref: '#/components/responses/ValidationErrorResponse'
+
+  /maintenances/services/{service}:
+    patch:
+      tags: [Maintenance]
+      summary: Update service
+      operationId: pettyMaintServicesUpdate
+      parameters:
+        - $ref: '#/components/parameters/ServiceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                service_date:
+                  type: string
+                  format: date
+                next_due_date:
+                  type: string
+                  format: date
+                  nullable: true
+                reference:
+                  type: string
+                  nullable: true
+                work_done:
+                  type: string
+                  nullable: true
+                amount:
+                  type: number
+                  format: float
+                  nullable: true
+                transaction_cost:
+                  type: number
+                  format: float
+                  nullable: true
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '422':
+          $ref: '#/components/responses/ValidationErrorResponse'
+    delete:
+      tags: [Maintenance]
+      summary: Delete service
+      operationId: pettyMaintServicesDestroy
+      parameters:
+        - $ref: '#/components/parameters/ServiceId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+
+  /maintenances/bikes/{bike}/unroadworthy:
+    post:
+      tags: [Maintenance]
+      summary: Set unroadworthy status
+      operationId: pettyMaintSetUnroadworthy
+      parameters:
+        - $ref: '#/components/parameters/BikeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_unroadworthy]
+              properties:
+                is_unroadworthy:
+                  type: boolean
+                unroadworthy_notes:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '422':
+          $ref: '#/components/responses/ValidationErrorResponse'
+
+  /insights/dashboard:
+    get:
+      tags: [Insights]
+      summary: Dashboard insights
+      operationId: pettyInsightsDashboard
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /insights/ledger:
+    get:
+      tags: [Insights]
+      summary: Unified ledger
+      operationId: pettyInsightsLedger
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: batch_id
+          in: query
+          schema:
+            type: integer
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: source
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Q'
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          $ref: '#/components/responses/PaginatedSuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /reports/lookups:
+    get:
+      tags: [Reports]
+      summary: Report lookup values
+      operationId: pettyReportsLookups
+      parameters:
+        - name: batch_limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 500
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /reports/general:
+    get:
+      tags: [Reports]
+      summary: General report
+      operationId: pettyReportsGeneral
+      parameters:
+        - name: batch_ids[]
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: integer
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: bike_id
+          in: query
+          schema:
+            type: integer
+        - name: respondent_id
+          in: query
+          schema:
+            type: integer
+        - name: include[]
+          in: query
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+        - name: view
+          in: query
+          schema:
+            type: string
+            enum: [combined, split]
+        - $ref: '#/components/parameters/Q'
+        - name: include_chart
+          in: query
+          schema:
+            type: boolean
+        - name: include_rows
+          in: query
+          schema:
+            type: boolean
+        - name: max_rows
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 2000
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '422':
+          $ref: '#/components/responses/ValidationErrorResponse'
+
+  /tokens/batches/available:
+    get:
+      tags: [Token Hostels]
+      summary: List available batches (token alias)
+      operationId: pettyTokenBatchesAvailable
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /tokens/hostels:
+    get:
+      tags: [Token Hostels]
+      summary: List hostels
+      operationId: pettyTokenHostelsIndex
+      parameters:
+        - $ref: '#/components/parameters/Q'
+        - name: sort_due
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          $ref: '#/components/responses/PaginatedSuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+    post:
+      tags: [Token Hostels]
+      summary: Create hostel
+      operationId: pettyTokenHostelsStore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hostel_name, stake, amount_due]
+              properties:
+                hostel_name:
+                  type: string
+                meter_no:
+                  type: string
+                  nullable: true
+                phone_no:
+                  type: string
+                  nullable: true
+                no_of_routers:
+                  type: integer
+                  minimum: 0
+                stake:
+                  type: string
+                  enum: [monthly, semester]
+                amount_due:
+                  type: number
+                  format: float
+      responses:
+        '201':
+          $ref: '#/components/responses/CreatedResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '422':
+          $ref: '#/components/responses/ValidationErrorResponse'
+
+  /tokens/hostels/{hostel}:
+    get:
+      tags: [Token Hostels]
+      summary: Get one hostel with payment history
+      operationId: pettyTokenHostelsShow
+      parameters:
+        - $ref: '#/components/parameters/HostelId'
+        - name: payments_per_page
+          in: query
+          schema:
+            type: integer
+            enum: [10, 20, 50, 100]
+            default: 20
+      responses:
+        '200':
+          $ref: '#/components/responses/PaginatedSuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundResponse'
+    patch:
+      tags: [Token Hostels]
+      summary: Update hostel
+      operationId: pettyTokenHostelsUpdate
+      parameters:
+        - $ref: '#/components/parameters/HostelId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hostel_name:
+                  type: string
+                meter_no:
+                  type: string
+                  nullable: true
+                phone_no:
+                  type: string
+                  nullable: true
+                no_of_routers:
+                  type: integer
+                  minimum: 0
+                stake:
+                  type: string
+                  enum: [monthly, semester]
+                amount_due:
+                  type: number
+                  format: float
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '422':
+          $ref: '#/components/responses/ValidationErrorResponse'
+    delete:
+      tags: [Token Hostels]
+      summary: Delete hostel
+      operationId: pettyTokenHostelsDestroy
+      parameters:
+        - $ref: '#/components/parameters/HostelId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '409':
+          $ref: '#/components/responses/ConflictResponse'
+
+  /tokens/hostels/{hostel}/payments:
+    post:
+      tags: [Token Hostels]
+      summary: Record hostel token payment
+      operationId: pettyTokenPaymentsStore
+      parameters:
+        - $ref: '#/components/parameters/HostelId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [funding, amount, date]
+              properties:
+                funding:
+                  type: string
+                  enum: [auto, single]
+                batch_id:
+                  type: integer
+                  nullable: true
+                reference:
+                  type: string
+                  nullable: true
+                amount:
+                  type: number
+                  format: float
+                transaction_cost:
+                  type: number
+                  format: float
+                  nullable: true
+                date:
+                  type: string
+                  format: date
+                receiver_name:
+                  type: string
+                  nullable: true
+                receiver_phone:
+                  type: string
+                  nullable: true
+                notes:
+                  type: string
+                  nullable: true
+                meter_no:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          $ref: '#/components/responses/CreatedResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '422':
+          $ref: '#/components/responses/ValidationErrorResponse'
+
+  /tokens/payments/{payment}:
+    patch:
+      tags: [Token Hostels]
+      summary: Update token payment
+      operationId: pettyTokenPaymentsUpdate
+      parameters:
+        - $ref: '#/components/parameters/PaymentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [funding, amount, date]
+              properties:
+                funding:
+                  type: string
+                  enum: [auto, single]
+                batch_id:
+                  type: integer
+                  nullable: true
+                reference:
+                  type: string
+                  nullable: true
+                amount:
+                  type: number
+                  format: float
+                transaction_cost:
+                  type: number
+                  format: float
+                  nullable: true
+                date:
+                  type: string
+                  format: date
+                receiver_name:
+                  type: string
+                  nullable: true
+                receiver_phone:
+                  type: string
+                  nullable: true
+                notes:
+                  type: string
+                  nullable: true
+                meter_no:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '409':
+          $ref: '#/components/responses/ConflictResponse'
+        '422':
+          $ref: '#/components/responses/ValidationErrorResponse'
+    delete:
+      tags: [Token Hostels]
+      summary: Delete token payment
+      operationId: pettyTokenPaymentsDestroy
+      parameters:
+        - $ref: '#/components/parameters/PaymentId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SuccessResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenResponse'
+        '409':
+          $ref: '#/components/responses/ConflictResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Token
+
+  parameters:
+    Q:
+      name: q
+      in: query
+      schema:
+        type: string
+    PerPage:
+      name: per_page
+      in: query
+      schema:
+        type: integer
+        enum: [15, 25, 30, 50, 100]
+        default: 25
+    TokenId:
+      name: tokenId
+      in: path
+      required: true
+      schema:
+        type: integer
+    BikeId:
+      name: bike
+      in: path
+      required: true
+      schema:
+        type: integer
+    RespondentId:
+      name: respondent
+      in: path
+      required: true
+      schema:
+        type: integer
+    CreditId:
+      name: credit
+      in: path
+      required: true
+      schema:
+        type: integer
+    SpendingId:
+      name: spending
+      in: path
+      required: true
+      schema:
+        type: integer
+    ServiceId:
+      name: service
+      in: path
+      required: true
+      schema:
+        type: integer
+    HostelId:
+      name: hostel
+      in: path
+      required: true
+      schema:
+        type: integer
+    PaymentId:
+      name: payment
+      in: path
+      required: true
+      schema:
+        type: integer
+
+  responses:
+    SuccessResponse:
+      description: Success
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SuccessEnvelope'
+    CreatedResponse:
+      description: Created
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SuccessEnvelope'
+    PaginatedSuccessResponse:
+      description: Success with pagination
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - type: object
+                properties:
+                  meta:
+                    allOf:
+                      - $ref: '#/components/schemas/Meta'
+                      - type: object
+                        properties:
+                          pagination:
+                            $ref: '#/components/schemas/Pagination'
+    MultiPaginatedSuccessResponse:
+      description: Success with multi-pagination
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - type: object
+                properties:
+                  meta:
+                    allOf:
+                      - $ref: '#/components/schemas/Meta'
+                      - type: object
+                        properties:
+                          pagination:
+                            $ref: '#/components/schemas/MultiPagination'
+    UnauthorizedResponse:
+      description: Unauthenticated
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ForbiddenResponse:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ValidationErrorResponse:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ConflictResponse:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NotFoundResponse:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+  schemas:
+    SuccessEnvelope:
+      type: object
+      required: [success, message, data, meta]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        message:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+        meta:
+          $ref: '#/components/schemas/Meta'
+    ErrorEnvelope:
+      type: object
+      required: [success, message, errors, meta]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        message:
+          type: string
+        errors:
+          type: object
+          additionalProperties: true
+        meta:
+          $ref: '#/components/schemas/Meta'
+    Meta:
+      type: object
+      properties:
+        request_id:
+          type: string
+        api_version:
+          type: string
+          example: v1
+        timestamp:
+          type: string
+          format: date-time
+      additionalProperties: true
+    Pagination:
+      type: object
+      required: [current_page, last_page, per_page, total, from, to, has_more_pages]
+      properties:
+        current_page:
+          type: integer
+        last_page:
+          type: integer
+        per_page:
+          type: integer
+        total:
+          type: integer
+        from:
+          type: integer
+          nullable: true
+        to:
+          type: integer
+          nullable: true
+        has_more_pages:
+          type: boolean
+    MultiPagination:
+      type: object
+      properties:
+        services:
+          $ref: '#/components/schemas/Pagination'
+        maintenances:
+          $ref: '#/components/schemas/Pagination'
+      additionalProperties: true
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+        is_active:
+          type: boolean
+        last_login_at:
+          type: string
+          format: date-time
+          nullable: true
+    SessionToken:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        device_id:
+          type: string
+          nullable: true
+        device_platform:
+          type: string
+          nullable: true
+        is_current:
+          type: boolean
+        last_ip:
+          type: string
+          nullable: true
+        last_user_agent:
+          type: string
+          nullable: true
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true

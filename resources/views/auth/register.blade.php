@@ -6,7 +6,6 @@
   <title>Register</title>
   @vite('resources/css/app.css')
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-
   <style>
     :root {
       --primary: #10b981;
@@ -272,6 +271,7 @@
       }
     }
   </style>
+
 </head>
 <body>
 
@@ -301,6 +301,12 @@
       <div class="input-group">
         <input id="email" name="email" type="email" value="{{ old('email') }}" required placeholder=" " class="form-input" />
         <label for="email" class="floating-label">Email Address</label>
+      </div>
+
+      {{-- Phone --}}
+      <div class="input-group">
+        <input id="phone" name="phone" type="text" value="{{ old('phone') }}" required placeholder=" " class="form-input" />
+        <label for="phone" class="floating-label">Phone Number</label>
       </div>
 
       {{-- Password --}}
@@ -334,7 +340,6 @@
     function togglePassword(fieldId) {
       const passwordInput = document.getElementById(fieldId);
       const toggleIcon = passwordInput.nextElementSibling.nextElementSibling;
-
       if (passwordInput.type === 'password') {
         passwordInput.type = 'text';
         toggleIcon.textContent = '👁️';
@@ -355,17 +360,6 @@
         }, 300);
       }, 5000);
     }
-
-    // Add focus styles for better accessibility
-    document.addEventListener('keydown', function(e) {
-      if (e.key === 'Tab') {
-        document.body.classList.add('user-tabbing');
-      }
-    });
-
-    document.addEventListener('mousedown', function() {
-      document.body.classList.remove('user-tabbing');
-    });
   </script>
 </body>
 </html>

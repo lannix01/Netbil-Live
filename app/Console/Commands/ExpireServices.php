@@ -11,14 +11,23 @@ class ExpireServices extends Command
     protected $signature = 'services:expire';
     protected $description = 'Marks expired services as expired automatically';
 
-    public function handle(): void
-    {
-        $today = Carbon::today();
+    public function handle()
+{
+    $subs = Subscription::where('status','active')
+         ->whereNotNull('expires_at')
+         ->where('expires_at','<',now())->get();
 
-        $expired = Service::where('end_date', '<', $today)
-                          ->where('status', '!=', 'expired')
-                          ->update(['status' => 'expired']);
+    foreach($subs as $s) {
+        $s->status = 'expired';
+        $s->save();
 
-        $this->info("✅ $expired services marked as expired.");
+        // remove or disable mikrotik credential
+        if($s->type === 'hotspot') {
+            $this->ros->removeHotspotUser($s->username);
+        } elseif($s->type === 'pppoe') {
+            $this->ros->removePppSecret($s->username);
+        }
     }
+}
+
 }

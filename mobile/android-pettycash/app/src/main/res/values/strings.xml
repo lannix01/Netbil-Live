@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Skybrix PettyCash</string>
+    <string name="api_base_url">https://your-domain.example/api/petty/v1/</string>
+</resources>
