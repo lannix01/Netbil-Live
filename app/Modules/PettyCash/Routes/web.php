@@ -6,6 +6,7 @@ use App\Modules\PettyCash\Controllers\CreditController;
 use App\Modules\PettyCash\Controllers\BatchController;
 use App\Modules\PettyCash\Controllers\Spending\BikeController;
 use App\Modules\PettyCash\Controllers\Spending\MealController;
+use App\Modules\PettyCash\Controllers\Spending\MealDailyController;
 use App\Modules\PettyCash\Controllers\Spending\TokenController;
 use App\Modules\PettyCash\Controllers\Spending\OtherController;
 use App\Modules\PettyCash\Controllers\ReportsController;
@@ -36,6 +37,7 @@ Route::post('/notifications/sms-settings', [NotificationsController::class, 'sav
 Route::post('/notifications/auto-check', [NotificationsController::class, 'runAutoCheck'])->name('petty.notifications.auto_check');
 
 Route::get('/profile', [ProfileController::class, 'index'])->name('petty.profile.index');
+Route::post('/profile/users/{user}/send-login-sms', [ProfileController::class, 'sendLoginSms'])->name('petty.profile.users.send_login_sms');
 Route::get('/settings', [SettingsController::class, 'index'])->name('petty.settings.index');
 Route::post('/settings/users', [SettingsController::class, 'storeUser'])->name('petty.settings.users.store');
 Route::put('/settings/users/{user}', [SettingsController::class, 'updateUser'])->name('petty.settings.users.update');
@@ -67,14 +69,23 @@ Route::get('/spendings/meals/create', [MealController::class, 'create'])->name('
 Route::post('/spendings/meals', [MealController::class, 'store'])->name('petty.meals.store');
 Route::get('/spendings/meals/pdf', [MealController::class, 'pdf'])->name('petty.meals.pdf');
 
+// Meals daily spendings + bill payments
+Route::get('/spendings/meals/daily', [MealDailyController::class, 'index'])->name('petty.meals.daily.index');
+Route::get('/spendings/meals/daily/calculate', [MealDailyController::class, 'calculate'])->name('petty.meals.daily.calculate');
+Route::post('/spendings/meals/daily', [MealDailyController::class, 'storeDaily'])->name('petty.meals.daily.store');
+Route::post('/spendings/meals/daily/payments', [MealDailyController::class, 'storePayment'])->name('petty.meals.daily.payments.store');
+
 
 
 // Token/Hostels
 Route::get('/spendings/tokens', [TokenController::class, 'index'])->name('petty.tokens.index');
 Route::get('/spendings/tokens/create', [TokenController::class, 'create'])->name('petty.tokens.create');
+Route::get('/spendings/tokens/onts/search', [TokenController::class, 'searchOnts'])->name('petty.tokens.onts.search');
 Route::post('/spendings/tokens/hostels', [TokenController::class, 'storeHostel'])->name('petty.tokens.hostels.store');
 
 Route::get('/spendings/tokens/hostels/{hostel}', [TokenController::class, 'showHostel'])->name('petty.tokens.hostels.show');
+Route::put('/spendings/tokens/hostels/{hostel}', [TokenController::class, 'updateHostel'])->name('petty.tokens.hostels.update');
+Route::post('/spendings/tokens/hostels/{hostel}/merge-ont', [TokenController::class, 'mergeHostelOnt'])->name('petty.tokens.hostels.merge_ont');
 Route::post('/spendings/tokens/hostels/{hostel}/payments', [TokenController::class, 'storePayment'])->name('petty.tokens.payments.store');
 
 // PDFs
@@ -118,8 +129,11 @@ Route::put('/bikes-master/{bike}', [BikeMasterController::class, 'update'])->nam
 Route::get('/respondents', [RespondentController::class, 'index'])->name('petty.respondents.index');
 Route::get('/respondents/create', [RespondentController::class, 'create'])->name('petty.respondents.create');
 Route::post('/respondents', [RespondentController::class, 'store'])->name('petty.respondents.store');
+Route::get('/respondents/{respondent}', [RespondentController::class, 'show'])->name('petty.respondents.show');
 Route::get('/respondents/{respondent}/edit', [RespondentController::class, 'edit'])->name('petty.respondents.edit');
 Route::put('/respondents/{respondent}', [RespondentController::class, 'update'])->name('petty.respondents.update');
+Route::post('/respondents/{respondent}/card/generate', [RespondentController::class, 'generateCard'])->name('petty.respondents.card.generate');
+Route::post('/respondents/{respondent}/card/sms', [RespondentController::class, 'sendCardLinkSms'])->name('petty.respondents.card.sms');
 
 
 // Credits edit

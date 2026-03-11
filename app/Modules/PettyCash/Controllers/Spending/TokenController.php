@@ -9,6 +9,7 @@ use App\Modules\PettyCash\Models\Hostel;
 use App\Modules\PettyCash\Models\Payment;
 use App\Modules\PettyCash\Models\Spending;
 use App\Modules\PettyCash\Services\FundsAllocatorService;
+use App\Modules\PettyCash\Services\OntDirectoryService;
 use App\Modules\PettyCash\Support\PettyAccess;
 use App\Modules\PettyCash\Support\TabularExport;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -53,6 +54,7 @@ class TokenController extends Controller
             ->when($q !== '', function ($qq) use ($q) {
                 $qq->where(function ($w) use ($q) {
                     $w->where('hostel_name', 'like', "%{$q}%")
+                        ->orWhere('contact_person', 'like', "%{$q}%")
                         ->orWhere('meter_no', 'like', "%{$q}%")
                         ->orWhere('phone_no', 'like', "%{$q}%");
                 });
@@ -168,27 +170,74 @@ class TokenController extends Controller
 
     public function create()
     {
-        return view('pettycash::spendings.tokens.create');
+        $ontCatalog = $this->ontCatalogForUi();
+
+        return view('pettycash::spendings.tokens.create', compact('ontCatalog'));
+    }
+
+    public function searchOnts(Request $request)
+    {
+        $user = auth('petty')->user();
+        $canSearch = PettyAccess::allows($user, 'tokens.create_hostel')
+            || PettyAccess::allows($user, 'tokens.edit_hostel');
+
+        abort_unless($canSearch, 403);
+
+        $q = trim((string) $request->query('q', ''));
+        $limit = max(5, min(100, (int) $request->integer('limit', 30)));
+
+        $catalog = $this->ontCatalogForUi($q, $limit);
+        $status = (bool) ($catalog['available'] ?? false) ? 200 : 503;
+
+        return response()->json([
+            'available' => (bool) ($catalog['available'] ?? false),
+            'message' => (string) ($catalog['message'] ?? ''),
+            'fetched_at' => $catalog['fetched_at'] ?? null,
+            'source_count' => (int) ($catalog['source_count'] ?? 0),
+            'onts' => array_values((array) ($catalog['hostels'] ?? [])),
+        ], $status);
     }
 
     public function storeHostel(Request $request)
     {
         $data = $request->validate([
-            'hostel_name' => ['required', 'string', 'max:255'],
-            'meter_no' => ['nullable', 'string', 'max:255'],
+            'hostel_name' => ['nullable', 'string', 'max:255'],
+            'ont_key' => ['required', 'string', 'max:120'],
+            'contact_person' => ['nullable', 'string', 'max:255'],
+            'meter_no' => ['required', 'string', 'max:255'],
             'phone_no' => ['nullable', 'string', 'max:255'],
             'no_of_routers' => ['nullable', 'integer', 'min:0'],
             'stake' => ['required', 'in:monthly,semester'],
             'amount_due' => ['required', 'numeric', 'min:0'],
         ]);
 
+        [$candidate, $validationError] = $this->resolveOntCandidate(
+            (string) ($data['hostel_name'] ?? ''),
+            (string) ($data['ont_key'] ?? '')
+        );
+        if ($validationError !== null) {
+            return back()->withErrors(['hostel_name' => $validationError])->withInput();
+        }
+
+        if ($candidate !== null) {
+            $data['hostel_name'] = $candidate['hostel_name'];
+        }
+
+        if (trim((string) ($data['hostel_name'] ?? '')) === '') {
+            return back()->withErrors([
+                'hostel_name' => 'Hostel name is required.',
+            ])->withInput();
+        }
+
         $hostel = Hostel::create([
             'hostel_name' => $data['hostel_name'],
-            'meter_no' => $data['meter_no'] ?? null,
+            'contact_person' => $data['contact_person'] ?? null,
+            'meter_no' => $data['meter_no'],
             'phone_no' => $data['phone_no'] ?? null,
-            'no_of_routers' => $data['no_of_routers'] ?? 0,
+            'no_of_routers' => $this->resolveRoutersInput($data),
             'stake' => $data['stake'],
             'amount_due' => $data['amount_due'],
+            'ont_merged' => (bool) ($candidate !== null),
         ]);
 
         if ((string) $request->input('after_save') === 'record_payment' && PettyAccess::allows(auth('petty')->user(), 'tokens.record_payment')) {
@@ -198,6 +247,88 @@ class TokenController extends Controller
         }
 
         return redirect()->route('petty.tokens.index')->with('success', 'Hostel saved.');
+    }
+
+    public function updateHostel(Hostel $hostel, Request $request)
+    {
+        $data = $request->validate([
+            'hostel_name' => ['nullable', 'string', 'max:255'],
+            'ont_key' => ['required', 'string', 'max:120'],
+            'contact_person' => ['nullable', 'string', 'max:255'],
+            'meter_no' => ['required', 'string', 'max:255'],
+            'phone_no' => ['nullable', 'string', 'max:255'],
+            'no_of_routers' => ['nullable', 'integer', 'min:0'],
+            'stake' => ['required', 'in:monthly,semester'],
+            'amount_due' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        [$candidate, $validationError] = $this->resolveOntCandidate(
+            (string) ($data['hostel_name'] ?? ''),
+            (string) ($data['ont_key'] ?? '')
+        );
+        if ($validationError !== null) {
+            return back()->withErrors(['hostel_name' => $validationError])->withInput();
+        }
+
+        if ($candidate !== null) {
+            $data['hostel_name'] = $candidate['hostel_name'];
+        }
+
+        if (trim((string) ($data['hostel_name'] ?? '')) === '') {
+            return back()->withErrors([
+                'hostel_name' => 'Hostel name is required.',
+            ])->withInput();
+        }
+
+        $hostel->update([
+            'hostel_name' => $data['hostel_name'],
+            'contact_person' => $data['contact_person'] ?? null,
+            'meter_no' => $data['meter_no'],
+            'phone_no' => $data['phone_no'] ?? null,
+            'no_of_routers' => $this->resolveRoutersInput($data, (int) ($hostel->no_of_routers ?? 0)),
+            'stake' => $data['stake'],
+            'amount_due' => $data['amount_due'],
+            'ont_merged' => (bool) ($candidate !== null || (bool) ($hostel->ont_merged ?? false)),
+        ]);
+
+        return redirect()
+            ->route('petty.tokens.hostels.show', $hostel->id)
+            ->with('success', 'Hostel details updated.');
+    }
+
+    public function mergeHostelOnt(Hostel $hostel, Request $request)
+    {
+        if ((bool) ($hostel->ont_merged ?? false)) {
+            return redirect()
+                ->route('petty.tokens.hostels.show', ['hostel' => $hostel->id])
+                ->with('success', 'Hostel already merged from ONT directory.');
+        }
+
+        $data = $request->validate([
+            'ont_key' => ['required', 'string', 'max:120'],
+            'hostel_name' => ['nullable', 'string', 'max:255'],
+            'no_of_routers' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        [$candidate, $validationError] = $this->resolveOntCandidate(
+            (string) ($data['hostel_name'] ?? ''),
+            (string) ($data['ont_key'] ?? '')
+        );
+        if ($validationError !== null || $candidate === null) {
+            return back()->withErrors([
+                'ont_key' => $validationError ?? 'Selected ONT was not found in the directory.',
+            ])->withInput();
+        }
+
+        $hostel->update([
+            'hostel_name' => (string) $candidate['hostel_name'],
+            'no_of_routers' => $this->resolveRoutersInput($data, (int) ($hostel->no_of_routers ?? 0)),
+            'ont_merged' => true,
+        ]);
+
+        return redirect()
+            ->route('petty.tokens.hostels.show', ['hostel' => $hostel->id, 'modal' => 'hostel-merge'])
+            ->with('success', 'Hostel name merged from ONT directory.');
     }
 
     public function showHostel(Hostel $hostel)
@@ -235,15 +366,19 @@ class TokenController extends Controller
                 $nextDue = $lastDate->copy()->addMonthNoOverflow()->startOfDay();
             }
 
-            $daysToDue = $today->diffInDays($nextDue, false);
+                $daysToDue = $today->diffInDays($nextDue, false);
 
             if ($daysToDue === 3) { $dueBadge = 'Due in 3 days'; $dueStatus = 'upcoming'; }
             elseif ($daysToDue === 2) { $dueBadge = 'Due in 2 days'; $dueStatus = 'upcoming'; }
             elseif ($daysToDue === 1) { $dueBadge = 'Due tomorrow'; $dueStatus = 'upcoming'; }
             elseif ($daysToDue === 0) { $dueBadge = 'Due today'; $dueStatus = 'due_today'; }
             elseif ($daysToDue < 0) { $dueBadge = 'Overdue by ' . abs($daysToDue) . ' day' . (abs($daysToDue) === 1 ? '' : 's'); $dueStatus = 'overdue'; }
-            else { $dueBadge = 'Due in ' . $daysToDue . ' days'; $dueStatus = 'upcoming'; }
+                else { $dueBadge = 'Due in ' . $daysToDue . ' days'; $dueStatus = 'upcoming'; }
         }
+
+        $ontCatalog = $this->ontCatalogForUi((string) $hostel->hostel_name, 30);
+        $selectedOnt = $this->findOntCandidateForHostel($ontCatalog, (string) $hostel->hostel_name);
+        $selectedOntKey = (string) ($selectedOnt['key'] ?? '');
 
         return view('pettycash::spendings.tokens.hostel_show', compact(
             'hostel',
@@ -255,7 +390,9 @@ class TokenController extends Controller
             'daysToDue',
             'dueBadge',
             'dueStatus',
-            'today'
+            'today',
+            'ontCatalog',
+            'selectedOntKey'
         ));
     }
 
@@ -267,16 +404,15 @@ class TokenController extends Controller
             'funding' => ['required', 'in:auto,single'],
             'batch_id' => ['nullable', 'integer', 'exists:petty_batches,id'],
 
-            'reference' => ['nullable', 'string', 'max:255'],
+            'reference' => ['required', 'string', 'max:255'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'transaction_cost' => ['nullable', 'numeric', 'min:0'],
             'date' => ['required', 'date'],
             'receiver_name' => ['nullable', 'string', 'max:255'],
-            'receiver_phone' => ['nullable', 'string', 'max:255'],
+            'receiver_phone' => ['required', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:255'],
 
-            // allow optional override; default comes from hostel below
-            'meter_no' => ['nullable', 'string', 'max:64'],
+            'meter_no' => ['required', 'string', 'max:64'],
         ]);
 
         if ($data['funding'] === 'single' && empty($data['batch_id'])) {
@@ -287,7 +423,10 @@ class TokenController extends Controller
         $amount = (float) $data['amount'];
 
         // meter number captured into spending record for PDF/ledger
-        $meterNo = trim((string) (($data['meter_no'] ?? null) ?: ($hostel->meter_no ?? '')));
+        $meterNo = trim((string) $data['meter_no']);
+        if ($meterNo === '') {
+            return back()->withErrors(['meter_no' => 'Meter number is required.'])->withInput();
+        }
 
         $allocator = app(FundsAllocatorService::class);
 
@@ -303,13 +442,17 @@ class TokenController extends Controller
 
         try {
             DB::transaction(function () use ($hostel, $data, $fee, $amount, $allocator, $meterNo, $supportsSpendingLink) {
+                if (trim((string) $hostel->meter_no) !== $meterNo) {
+                    $hostel->meter_no = $meterNo;
+                    $hostel->save();
+                }
 
                 // Create spending first (affects balances)
                 $spending = Spending::create([
                     'batch_id' => null,
                     'type' => 'token',
                     'sub_type' => 'hostel',
-                    'reference' => $data['reference'] ?? null,
+                    'reference' => $data['reference'],
 
                     // store meter number snapshot on the spending row
                     'meter_no' => ($meterNo !== '' ? $meterNo : null),
@@ -331,12 +474,12 @@ class TokenController extends Controller
                 $paymentPayload = [
                     'hostel_id' => $hostel->id,
                     'batch_id' => $primaryBatchId,
-                    'reference' => $data['reference'] ?? null,
+                    'reference' => $data['reference'],
                     'amount' => $amount,
                     'transaction_cost' => $fee,
                     'date' => $data['date'],
                     'receiver_name' => $data['receiver_name'] ?? null,
-                    'receiver_phone' => $data['receiver_phone'] ?? null,
+                    'receiver_phone' => $data['receiver_phone'],
                     'notes' => $data['notes'] ?? null,
                     'recorded_by' => auth('petty')->id(),
                 ];
@@ -353,6 +496,234 @@ class TokenController extends Controller
 
         return redirect()->route('petty.tokens.hostels.show', $hostel->id)
             ->with('success', 'Payment recorded with auto allocation.');
+    }
+
+    public function editPayment(Payment $payment)
+    {
+        $hostel = Hostel::query()->findOrFail((int) $payment->hostel_id);
+
+        return view('pettycash::spendings.tokens.payment_edit', compact('payment', 'hostel'));
+    }
+
+    public function updatePayment(Payment $payment, Request $request)
+    {
+        $data = $request->validate([
+            'reference' => ['required', 'string', 'max:255'],
+            'meter_no' => ['required', 'string', 'max:64'],
+            'date' => ['required', 'date'],
+            'receiver_name' => ['nullable', 'string', 'max:255'],
+            'receiver_phone' => ['required', 'string', 'max:255'],
+            'notes' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $meterNo = trim((string) $data['meter_no']);
+        if ($meterNo === '') {
+            return back()->withErrors(['meter_no' => 'Meter number is required.'])->withInput();
+        }
+
+        DB::transaction(function () use ($payment, $data, $meterNo) {
+            $hostel = Hostel::query()->lockForUpdate()->find((int) $payment->hostel_id);
+            if ($hostel && trim((string) $hostel->meter_no) !== $meterNo) {
+                $hostel->meter_no = $meterNo;
+                $hostel->save();
+            }
+
+            $payment->update([
+                'reference' => $data['reference'],
+                'date' => $data['date'],
+                'receiver_name' => $data['receiver_name'] ?? null,
+                'receiver_phone' => $data['receiver_phone'],
+                'notes' => $data['notes'] ?? null,
+            ]);
+
+            if ($payment->spending_id) {
+                Spending::query()
+                    ->whereKey($payment->spending_id)
+                    ->update([
+                        'reference' => $data['reference'],
+                        'meter_no' => $meterNo,
+                        'date' => $data['date'],
+                    ]);
+            }
+        });
+
+        return redirect()
+            ->route('petty.tokens.hostels.show', $payment->hostel_id)
+            ->with('success', 'Payment details updated.');
+    }
+
+    /**
+     * @return array{0:array<string,mixed>|null,1:string|null}
+     */
+    private function resolveOntCandidate(string $hostelName, string $ontKey = ''): array
+    {
+        /** @var OntDirectoryService $directory */
+        $directory = app(OntDirectoryService::class);
+        $match = $directory->findCandidate($ontKey, $hostelName);
+        $catalog = (array) ($match['catalog'] ?? []);
+        $candidate = $match['candidate'] ?? null;
+        $available = (bool) ($catalog['available'] ?? false);
+
+        if (!$available) {
+            if ($directory->strictValidationEnabled()) {
+                $message = (string) ($catalog['message'] ?? 'ONT directory is unavailable.');
+                return [null, $message];
+            }
+
+            return [null, null];
+        }
+
+        if ($candidate === null) {
+            if (trim($ontKey) === '') {
+                return [null, 'Select ONT/site from the list.'];
+            }
+
+            return [null, 'Invalid ONT/site selection.'];
+        }
+
+        return [$candidate, null];
+    }
+
+    /**
+     * @param array<string,mixed> $data
+     */
+    private function resolveRoutersInput(array $data, int $fallback = 0): int
+    {
+        if (array_key_exists('no_of_routers', $data) && $data['no_of_routers'] !== null && $data['no_of_routers'] !== '') {
+            return max(0, (int) $data['no_of_routers']);
+        }
+
+        return max(0, $fallback);
+    }
+
+    /**
+     * @return array{
+     *   available:bool,
+     *   message:string,
+     *   fetched_at:string|null,
+     *   source_count:int,
+     *   hostels:array<int,array{
+     *      key:string,
+     *      hostel_name:string,
+     *      site_id:string|null,
+     *      router_count_suggestion:int,
+     *      merge_status:string,
+     *      merge_status_label:string,
+     *      merge_status_tone:string
+     *   }>
+     * }
+     */
+    private function ontCatalogForUi(string $query = '', int $limit = 30): array
+    {
+        /** @var OntDirectoryService $directory */
+        $directory = app(OntDirectoryService::class);
+        $catalog = $directory->searchCatalog($query, $limit);
+        $rows = (array) ($catalog['hostels'] ?? []);
+        if (empty($rows)) {
+            return $catalog;
+        }
+
+        $catalog['hostels'] = $this->applyOntMergeStatus($rows);
+
+        return $catalog;
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $rows
+     * @return array<int,array<string,mixed>>
+     */
+    private function applyOntMergeStatus(array $rows): array
+    {
+        $candidateNames = collect($rows)
+            ->map(function ($candidate): string {
+                $candidate = (array) $candidate;
+                return trim((string) ($candidate['hostel_name'] ?? ''));
+            })
+            ->filter(fn ($name) => $name !== '')
+            ->unique()
+            ->values();
+
+        if ($candidateNames->isEmpty()) {
+            return $rows;
+        }
+
+        $hasMergedColumn = Schema::hasColumn('petty_hostels', 'ont_merged');
+        $statusByName = [];
+        $hostelStatusQuery = Hostel::query()
+            ->select('hostel_name')
+            ->whereIn('hostel_name', $candidateNames->all());
+        if ($hasMergedColumn) {
+            $hostelStatusQuery->addSelect('ont_merged');
+        }
+
+        $hostelStatusQuery
+            ->get()
+            ->each(function (Hostel $hostel) use (&$statusByName, $hasMergedColumn) {
+                $nameKey = $this->normalizeHostelName((string) $hostel->hostel_name);
+                if ($nameKey === '') {
+                    return;
+                }
+
+                $existing = $statusByName[$nameKey] ?? ['exists' => false, 'merged' => false];
+                $statusByName[$nameKey] = [
+                    'exists' => true,
+                    'merged' => (bool) ($existing['merged'] || ($hasMergedColumn ? (bool) ($hostel->ont_merged ?? false) : false)),
+                ];
+            });
+
+        return collect($rows)->map(function ($candidate) use ($statusByName) {
+            $candidate = (array) $candidate;
+            $nameKey = $this->normalizeHostelName((string) ($candidate['hostel_name'] ?? ''));
+            $statusRow = $statusByName[$nameKey] ?? ['exists' => false, 'merged' => false];
+
+            $status = 'unlinked';
+            $label = 'Not Added';
+            $tone = 'muted';
+
+            if ((bool) ($statusRow['exists'] ?? false)) {
+                if ((bool) ($statusRow['merged'] ?? false)) {
+                    $status = 'merged';
+                    $label = 'Merged';
+                    $tone = 'success';
+                } else {
+                    $status = 'failed';
+                    $label = 'Not Merged';
+                    $tone = 'muted';
+                }
+            }
+
+            $candidate['merge_status'] = $status;
+            $candidate['merge_status_label'] = $label;
+            $candidate['merge_status_tone'] = $tone;
+
+            return $candidate;
+        })->values()->all();
+    }
+
+    /**
+     * @param array{hostels?:array<int,array<string,mixed>>} $catalog
+     * @return array<string,mixed>|null
+     */
+    private function findOntCandidateForHostel(array $catalog, string $hostelName): ?array
+    {
+        $target = $this->normalizeHostelName($hostelName);
+        if ($target === '') {
+            return null;
+        }
+
+        foreach ((array) ($catalog['hostels'] ?? []) as $candidate) {
+            if ($this->normalizeHostelName((string) ($candidate['hostel_name'] ?? '')) === $target) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeHostelName(string $value): string
+    {
+        $collapsed = preg_replace('/\s+/', ' ', trim($value)) ?? '';
+        return strtoupper($collapsed);
     }
 
     private function paymentSupportsSpendingLink(): bool
@@ -384,6 +755,7 @@ class TokenController extends Controller
             ->when($q !== '', function ($qq) use ($q) {
                 $qq->where(function ($w) use ($q) {
                     $w->where('hostel_name', 'like', "%{$q}%")
+                        ->orWhere('contact_person', 'like', "%{$q}%")
                         ->orWhere('meter_no', 'like', "%{$q}%")
                         ->orWhere('phone_no', 'like', "%{$q}%");
                 });
@@ -408,6 +780,7 @@ class TokenController extends Controller
 
                 return [
                     'hostel_name' => $h->hostel_name,
+                    'contact_person' => $h->contact_person ?? '',
                     'meter_no' => $h->meter_no ?? '',
                     'phone_no' => $h->phone_no ?? '',
                     'routers' => (int) ($h->no_of_routers ?? 0),
@@ -423,6 +796,7 @@ class TokenController extends Controller
                 'pettycash-token-hostels-' . now()->format('Ymd-His'),
                 [
                     'Hostel' => 'hostel_name',
+                    'Contact Person' => 'contact_person',
                     'Meter No' => 'meter_no',
                     'Phone' => 'phone_no',
                     'Routers' => 'routers',

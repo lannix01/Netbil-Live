@@ -96,11 +96,20 @@ class PettyAccess
                     'edit' => 'Edit meal spendings',
                 ],
             ],
+            'meals_daily' => [
+                'label' => 'Meal Daily Bills',
+                'actions' => [
+                    'view' => 'View daily meal spendings and bills',
+                    'create' => 'Record daily meal spendings',
+                    'record_payment' => 'Record meal bill payments',
+                ],
+            ],
             'tokens' => [
                 'label' => 'Token Hostels',
                 'actions' => [
                     'view' => 'View hostels and recent payments',
                     'create_hostel' => 'Add hostels',
+                    'edit_hostel' => 'Edit hostel details',
                     'record_payment' => 'Record payments',
                     'edit_payment' => 'Edit payments',
                 ],
@@ -205,12 +214,19 @@ class PettyAccess
             'petty.meals.edit' => 'meals.edit',
             'petty.meals.update' => 'meals.edit',
 
+            'petty.meals.daily.index' => 'meals_daily.view',
+            'petty.meals.daily.calculate' => 'meals_daily.record_payment',
+            'petty.meals.daily.store' => 'meals_daily.create',
+            'petty.meals.daily.payments.store' => 'meals_daily.record_payment',
+
             'petty.tokens.index' => 'tokens.view',
             'petty.tokens.hostels.show' => 'tokens.view',
             'petty.tokens.pdf' => 'tokens.view',
             'petty.tokens.hostels.pdf' => 'tokens.view',
             'petty.tokens.create' => 'tokens.create_hostel',
             'petty.tokens.hostels.store' => 'tokens.create_hostel',
+            'petty.tokens.hostels.update' => 'tokens.edit_hostel',
+            'petty.tokens.hostels.merge_ont' => 'tokens.edit_hostel',
             'petty.tokens.payments.store' => 'tokens.record_payment',
             'petty.tokens.payments.edit' => 'tokens.edit_payment',
             'petty.tokens.payments.update' => 'tokens.edit_payment',
@@ -231,8 +247,11 @@ class PettyAccess
             'petty.respondents.index' => 'respondents.view',
             'petty.respondents.create' => 'respondents.create',
             'petty.respondents.store' => 'respondents.create',
+            'petty.respondents.show' => 'respondents.view',
             'petty.respondents.edit' => 'respondents.edit',
             'petty.respondents.update' => 'respondents.edit',
+            'petty.respondents.card.generate' => 'respondents.edit',
+            'petty.respondents.card.sms' => 'respondents.edit',
 
             'petty.maintenances.index' => 'maintenances.view',
             'petty.maintenances.show' => 'maintenances.view',
@@ -251,6 +270,7 @@ class PettyAccess
             'petty.notifications.sms_settings.save' => 'notifications.manage',
 
             'petty.profile.index' => 'profile.view',
+            'petty.profile.users.send_login_sms' => 'settings.manage_users',
 
             'petty.settings.index' => 'settings.manage_users',
             'petty.settings.users.store' => 'settings.manage_users',
@@ -359,6 +379,8 @@ class PettyAccess
         if ($normalizedRole === 'customer_care') {
             return [
                 'dashboard.view',
+                'meals_daily.view',
+                'meals_daily.create',
                 'tokens.view',
                 'profile.view',
             ];
@@ -373,6 +395,7 @@ class PettyAccess
             'batches.view',
             'bikes.view',
             'meals.view',
+            'meals_daily.view',
             'tokens.view',
             'others.view',
             'bikes_master.view',
