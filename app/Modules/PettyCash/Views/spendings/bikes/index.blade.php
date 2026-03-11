@@ -29,43 +29,57 @@
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
             <a class="btn" href="{{ route('petty.bikes.create') }}">+ New Spending</a>
-            <a class="btn2" href="{{ route('petty.bikes.pdf', ['from'=>$from,'to'=>$to,'sub_type'=>$sub,'batch_id'=>$batchId,'format'=>'pdf']) }}">PDF</a>
-            <a class="btn2" href="{{ route('petty.bikes.pdf', ['from'=>$from,'to'=>$to,'sub_type'=>$sub,'batch_id'=>$batchId,'format'=>'csv']) }}">CSV</a>
-            <a class="btn2" href="{{ route('petty.bikes.pdf', ['from'=>$from,'to'=>$to,'sub_type'=>$sub,'batch_id'=>$batchId,'format'=>'excel']) }}">Excel</a>
+            @include('pettycash::partials.export_select', [
+                'options' => [
+                    'PDF' => route('petty.bikes.pdf', ['from'=>$from,'to'=>$to,'sub_type'=>$sub,'batch_id'=>$batchId,'format'=>'pdf']),
+                    'CSV' => route('petty.bikes.pdf', ['from'=>$from,'to'=>$to,'sub_type'=>$sub,'batch_id'=>$batchId,'format'=>'csv']),
+                    'Excel' => route('petty.bikes.pdf', ['from'=>$from,'to'=>$to,'sub_type'=>$sub,'batch_id'=>$batchId,'format'=>'excel']),
+                ],
+            ])
         </div>
     </div>
 
     <div class="card">
-        <form method="GET" class="row" action="{{ route('petty.bikes.index') }}">
-            <div>
-                <div class="muted">From</div>
-                <input type="date" name="from" value="{{ $from }}">
-            </div>
-            <div>
-                <div class="muted">To</div>
-                <input type="date" name="to" value="{{ $to }}">
-            </div>
-            <div>
-                <div class="muted">Type</div>
-                <select name="sub_type">
-                    <option value="">All</option>
-                    <option value="fuel" @selected($sub==='fuel')>Fuel</option>
-                    <option value="maintenance" @selected($sub==='maintenance')>Maintenance</option>
-                </select>
-            </div>
-            <div>
-                <div class="muted">Batch</div>
-                <select name="batch_id">
-                    <option value="">All</option>
-                    @foreach($batches as $b)
-                        <option value="{{ $b->id }}" @selected((string)$batchId === (string)$b->id)>{{ $b->batch_no }}</option>
-                    @endforeach
-                </select>
-            </div>
+        <div class="pc-filter-dock">
+            <details class="pc-filter-panel" @if(filled($from) || filled($to) || filled($sub) || filled($batchId)) open @endif>
+                <summary>
+                    <span class="pc-filter-title">Filters</span>
+                    <span class="pc-filter-state">{{ filled($from) || filled($to) || filled($sub) || filled($batchId) ? 'active' : 'optional' }}</span>
+                </summary>
+                <div class="pc-filter-body">
+                    <form method="GET" class="row pc-filter-row" action="{{ route('petty.bikes.index') }}">
+                        <div>
+                            <div class="muted">From</div>
+                            <input type="date" name="from" value="{{ $from }}">
+                        </div>
+                        <div>
+                            <div class="muted">To</div>
+                            <input type="date" name="to" value="{{ $to }}">
+                        </div>
+                        <div>
+                            <div class="muted">Type</div>
+                            <select name="sub_type">
+                                <option value="">All</option>
+                                <option value="fuel" @selected($sub==='fuel')>Fuel</option>
+                                <option value="maintenance" @selected($sub==='maintenance')>Maintenance</option>
+                            </select>
+                        </div>
+                        <div>
+                            <div class="muted">Batch</div>
+                            <select name="batch_id">
+                                <option value="">All</option>
+                                @foreach($batches as $b)
+                                    <option value="{{ $b->id }}" @selected((string)$batchId === (string)$b->id)>{{ $b->batch_no }}</option>
+                                @endforeach
+                            </select>
+                        </div>
 
-            <button class="btn" type="submit">Filter</button>
-            <a class="btn2" href="{{ route('petty.bikes.index') }}">Reset</a>
-        </form>
+                        <button class="btn" type="submit">Filter</button>
+                        <a class="btn2" href="{{ route('petty.bikes.index') }}">Reset</a>
+                    </form>
+                </div>
+            </details>
+        </div>
 
         <div class="table-wrap">
         <table>

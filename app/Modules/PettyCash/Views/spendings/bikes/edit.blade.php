@@ -69,7 +69,7 @@
 
       <div class="pc-field">
           <label>Reference (MPESA code)</label>
-          <input class="pc-input" name="reference" value="{{ old('reference', $spending->reference) }}">
+          <input class="pc-input" name="reference" required value="{{ old('reference', $spending->reference) }}">
       </div>
 
       <div class="pc-field">

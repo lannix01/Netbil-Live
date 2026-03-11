@@ -76,7 +76,7 @@ class BikeController extends Controller
 
             'sub_type' => ['required', 'in:fuel,maintenance'],
             'bike_id' => ['required', 'integer', 'exists:petty_bikes,id'],
-            'reference' => ['nullable', 'string', 'max:255'],
+            'reference' => ['required', 'string', 'max:255'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'transaction_cost' => ['nullable', 'numeric', 'min:0'],
             'date' => ['required', 'date'],
@@ -104,7 +104,7 @@ class BikeController extends Controller
                     'batch_id' => null, // allocator will set primary batch
                     'type' => 'bike',
                     'sub_type' => $data['sub_type'],
-                    'reference' => $data['reference'] ?? null,
+                    'reference' => $data['reference'],
                     'amount' => $amount,
                     'transaction_cost' => $fee,
                     'date' => $data['date'],
@@ -259,7 +259,7 @@ class BikeController extends Controller
 
             'sub_type' => ['required', 'in:fuel,maintenance'],
             'bike_id' => ['required', 'integer', 'exists:petty_bikes,id'],
-            'reference' => ['nullable', 'string', 'max:255'],
+            'reference' => ['required', 'string', 'max:255'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'transaction_cost' => ['nullable', 'numeric', 'min:0'],
             'date' => ['required', 'date'],
@@ -281,7 +281,7 @@ class BikeController extends Controller
             return DB::transaction(function () use ($spending, $data, $amount, $fee, $allocator) {
                 $spending->update([
                     'sub_type' => $data['sub_type'],
-                    'reference' => $data['reference'] ?? null,
+                    'reference' => $data['reference'],
                     'amount' => $amount,
                     'transaction_cost' => $fee,
                     'date' => $data['date'],

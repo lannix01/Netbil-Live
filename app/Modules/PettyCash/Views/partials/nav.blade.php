@@ -17,6 +17,7 @@
     $showSpendings =
         $can('bikes.view') || $can('bikes.create') || $can('bikes.edit') ||
         $can('meals.view') || $can('meals.create') || $can('meals.edit') ||
+        $can('meals_daily.view') || $can('meals_daily.create') || $can('meals_daily.record_payment') ||
         $can('tokens.view') || $can('tokens.create_hostel') || $can('tokens.record_payment') || $can('tokens.edit_payment') ||
         $can('others.view') || $can('others.create') || $can('others.edit');
     $showMaster =
@@ -243,9 +244,16 @@
                 @endif
 
                 @if($can('meals.view') || $can('meals.create') || $can('meals.edit'))
-                    <a class="nav-link {{ $is('petty.meals') ? 'active' : '' }}" href="{{ route('petty.meals.index') }}"
+                    <a class="nav-link {{ $is('petty.meals') && !$is('petty.meals.daily') ? 'active' : '' }}" href="{{ route('petty.meals.index') }}"
                        onclick="if(window.innerWidth<=980)toggleSidebar()">
                         <i class="bi bi-cup-hot nav-icon"></i> Meals
+                    </a>
+                @endif
+
+                @if($can('meals_daily.view') || $can('meals_daily.create') || $can('meals_daily.record_payment'))
+                    <a class="nav-link {{ $is('petty.meals.daily') ? 'active' : '' }}" href="{{ route('petty.meals.daily.index') }}"
+                       onclick="if(window.innerWidth<=980)toggleSidebar()">
+                        <i class="bi bi-calendar2-week nav-icon"></i> Meal Bills
                     </a>
                 @endif
 

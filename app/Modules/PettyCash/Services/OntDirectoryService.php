@@ -462,6 +462,7 @@ class OntDirectoryService
                     'hostel_name' => $resolvedName,
                     'site_id' => ($siteId !== '' ? $siteId : null),
                     'ont_refs' => [],
+                    'serial_refs' => [],
                 ];
             } else {
                 $current = (string) ($groups[$groupKey]['hostel_name'] ?? '');
@@ -475,14 +476,20 @@ class OntDirectoryService
                 : ($serial !== '' ? 'serial:' . strtoupper($serial) : 'name:' . md5($resolvedName));
 
             $groups[$groupKey]['ont_refs'][$identity] = true;
+            if ($serial !== '') {
+                $serialKey = strtoupper($serial);
+                $groups[$groupKey]['serial_refs'][$serialKey] = $serial;
+            }
         }
 
         $catalog = [];
         foreach ($groups as $group) {
+            $serials = array_values((array) ($group['serial_refs'] ?? []));
             $catalog[] = [
                 'key' => (string) $group['key'],
                 'hostel_name' => (string) $group['hostel_name'],
                 'site_id' => $group['site_id'],
+                'site_sn' => $serials[0] ?? null,
                 'router_count_suggestion' => max(1, count((array) ($group['ont_refs'] ?? []))),
             ];
         }

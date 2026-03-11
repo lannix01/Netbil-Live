@@ -2,6 +2,13 @@
 
 @section('title','Meals (Lunch)')
 
+@php
+    $pettyUser = auth('petty')->user();
+    $canViewMealBills = \App\Modules\PettyCash\Support\PettyAccess::allows($pettyUser, 'meals_daily.view')
+        || \App\Modules\PettyCash\Support\PettyAccess::allows($pettyUser, 'meals_daily.create')
+        || \App\Modules\PettyCash\Support\PettyAccess::allows($pettyUser, 'meals_daily.record_payment');
+@endphp
+
 @push('styles')
 <style>
     .wrap{max-width:1100px;margin:0 auto}
@@ -33,37 +40,54 @@
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
             <a class="btn" href="{{ route('petty.meals.create') }}">+ New Lunch</a>
-            <a class="btn2" href="{{ route('petty.meals.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'pdf']) }}">PDF</a>
-            <a class="btn2" href="{{ route('petty.meals.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'csv']) }}">CSV</a>
-            <a class="btn2" href="{{ route('petty.meals.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'excel']) }}">Excel</a>
+            @if($canViewMealBills)
+                <a class="btn2" href="{{ route('petty.meals.daily.index') }}">Meal Bills</a>
+            @endif
+            @include('pettycash::partials.export_select', [
+                'options' => [
+                    'PDF' => route('petty.meals.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'pdf']),
+                    'CSV' => route('petty.meals.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'csv']),
+                    'Excel' => route('petty.meals.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'excel']),
+                ],
+            ])
         </div>
     </div>
 
     <div class="card">
-        <form method="GET" class="row" action="{{ route('petty.meals.index') }}">
-            <div>
-                <div class="muted">From</div>
-                <input type="date" name="from" value="{{ $from }}">
-            </div>
-            <div>
-                <div class="muted">To</div>
-                <input type="date" name="to" value="{{ $to }}">
-            </div>
-            <div>
-                <div class="muted">Batch</div>
-                <select name="batch_id">
-                    <option value="">All</option>
-                    @foreach($batches as $b)
-                        <option value="{{ $b->id }}" @selected((string)$batchId === (string)$b->id)>
-                            {{ $b->batch_no }}
-                        </option>
-                    @endforeach
-                </select>
-            </div>
+        <div class="pc-filter-dock">
+            <details class="pc-filter-panel" @if(filled($from) || filled($to) || filled($batchId)) open @endif>
+                <summary>
+                    <span class="pc-filter-title">Filters</span>
+                    <span class="pc-filter-state">{{ filled($from) || filled($to) || filled($batchId) ? 'active' : 'optional' }}</span>
+                </summary>
+                <div class="pc-filter-body">
+                    <form method="GET" class="row pc-filter-row" action="{{ route('petty.meals.index') }}">
+                        <div>
+                            <div class="muted">From</div>
+                            <input type="date" name="from" value="{{ $from }}">
+                        </div>
+                        <div>
+                            <div class="muted">To</div>
+                            <input type="date" name="to" value="{{ $to }}">
+                        </div>
+                        <div>
+                            <div class="muted">Batch</div>
+                            <select name="batch_id">
+                                <option value="">All</option>
+                                @foreach($batches as $b)
+                                    <option value="{{ $b->id }}" @selected((string)$batchId === (string)$b->id)>
+                                        {{ $b->batch_no }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
 
-            <button class="btn" type="submit">Filter</button>
-            <a class="btn2" href="{{ route('petty.meals.index') }}">Reset</a>
-        </form>
+                        <button class="btn" type="submit">Filter</button>
+                        <a class="btn2" href="{{ route('petty.meals.index') }}">Reset</a>
+                    </form>
+                </div>
+            </details>
+        </div>
 
         <div class="table-wrap">
             <table>

@@ -30,18 +30,28 @@
     </div>
 
     <div class="card">
-        <form method="GET" class="row" action="{{ route('petty.bikes.byBike', $bike->id) }}">
-            <div>
-                <div style="color:#667085;font-size:12px">From</div>
-                <input type="date" name="from" value="{{ $from }}">
-            </div>
-            <div>
-                <div style="color:#667085;font-size:12px">To</div>
-                <input type="date" name="to" value="{{ $to }}">
-            </div>
-            <button class="btn2" type="submit">Filter</button>
-            <a class="btn2" href="{{ route('petty.bikes.byBike', $bike->id) }}">Reset</a>
-        </form>
+        <div class="pc-filter-dock">
+            <details class="pc-filter-panel" @if(filled($from) || filled($to)) open @endif>
+                <summary>
+                    <span class="pc-filter-title">Filters</span>
+                    <span class="pc-filter-state">{{ filled($from) || filled($to) ? 'active' : 'optional' }}</span>
+                </summary>
+                <div class="pc-filter-body">
+                    <form method="GET" class="row pc-filter-row" action="{{ route('petty.bikes.byBike', $bike->id) }}">
+                        <div>
+                            <div style="color:#667085;font-size:12px">From</div>
+                            <input type="date" name="from" value="{{ $from }}">
+                        </div>
+                        <div>
+                            <div style="color:#667085;font-size:12px">To</div>
+                            <input type="date" name="to" value="{{ $to }}">
+                        </div>
+                        <button class="btn2" type="submit">Filter</button>
+                        <a class="btn2" href="{{ route('petty.bikes.byBike', $bike->id) }}">Reset</a>
+                    </form>
+                </div>
+            </details>
+        </div>
 
         <div class="table-wrap">
             <table>
@@ -78,4 +88,3 @@
     </div>
 </div>
 @endsection
-

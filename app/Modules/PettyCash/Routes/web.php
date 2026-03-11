@@ -82,11 +82,16 @@ Route::get('/spendings/tokens', [TokenController::class, 'index'])->name('petty.
 Route::get('/spendings/tokens/create', [TokenController::class, 'create'])->name('petty.tokens.create');
 Route::get('/spendings/tokens/onts/search', [TokenController::class, 'searchOnts'])->name('petty.tokens.onts.search');
 Route::post('/spendings/tokens/hostels', [TokenController::class, 'storeHostel'])->name('petty.tokens.hostels.store');
+Route::get('/spendings/tokens/hostels/{hostel}/agreement', [TokenController::class, 'agreement'])->name('petty.tokens.hostels.agreement');
+Route::put('/spendings/tokens/hostels/{hostel}/agreement', [TokenController::class, 'updateAgreement'])->name('petty.tokens.hostels.agreement.update');
 
 Route::get('/spendings/tokens/hostels/{hostel}', [TokenController::class, 'showHostel'])->name('petty.tokens.hostels.show');
 Route::put('/spendings/tokens/hostels/{hostel}', [TokenController::class, 'updateHostel'])->name('petty.tokens.hostels.update');
 Route::post('/spendings/tokens/hostels/{hostel}/merge-ont', [TokenController::class, 'mergeHostelOnt'])->name('petty.tokens.hostels.merge_ont');
+Route::post('/spendings/tokens/hostels/{hostel}/refresh-ont-sn', [TokenController::class, 'refreshHostelOntSn'])->name('petty.tokens.hostels.refresh_ont_sn');
 Route::post('/spendings/tokens/hostels/{hostel}/payments', [TokenController::class, 'storePayment'])->name('petty.tokens.payments.store');
+Route::post('/spendings/tokens/hostels/{hostel}/pending-credits', [TokenController::class, 'storePendingCredit'])->name('petty.tokens.hostels.pending_credits.store');
+Route::post('/spendings/tokens/hostels/{hostel}/pending-credits/{credit}/sort', [TokenController::class, 'sortPendingCredit'])->name('petty.tokens.hostels.pending_credits.sort');
 
 // PDFs
 Route::get('/spendings/tokens/pdf', [TokenController::class, 'pdfHostels'])->name('petty.tokens.pdf');

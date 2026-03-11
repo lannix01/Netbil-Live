@@ -64,7 +64,7 @@ class MealController extends Controller
             'funding' => ['required', 'in:auto,single'],
             'batch_id' => ['nullable', 'integer', 'exists:petty_batches,id'],
 
-            'reference' => ['nullable', 'string', 'max:255'],
+            'reference' => ['required', 'string', 'max:255'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'transaction_cost' => ['nullable', 'numeric', 'min:0'],
 
@@ -112,9 +112,10 @@ class MealController extends Controller
         // upfront balance check for AUTO (total)
         if ($data['funding'] === 'auto') {
             $requiredTotal = ($amount + $fee) * count($dates);
-            if ($requiredTotal > $allocator->totalNetBalance()) {
+            $availableTotal = $allocator->totalNetBalance();
+            if ($requiredTotal > $availableTotal) {
                 return back()->withErrors([
-                    'amount' => 'Insufficient TOTAL balance. Needed: '.number_format($requiredTotal,2).' Available: '.number_format($allocator->totalNetBalance(),2)
+                    'amount' => 'Insufficient TOTAL balance. Needed: '.number_format($requiredTotal,2).' Available: '.number_format($availableTotal,2)
                 ])->withInput();
             }
         }
@@ -126,7 +127,7 @@ class MealController extends Controller
                         'batch_id' => null,
                         'type' => 'meal',
                         'sub_type' => 'lunch',
-                        'reference' => $data['reference'] ?? null,
+                        'reference' => $data['reference'],
                         'amount' => $amount,
                         'transaction_cost' => $fee,
                         'date' => $d,
@@ -224,5 +225,49 @@ class MealController extends Controller
         return $pdf->download('pettycash-meals-lunch.pdf');
     }
 
-    // edit/update can stay single-batch for now (your edit view expects batch_id)
+    public function edit(Spending $spending)
+    {
+        abort_unless($spending->type === 'meal' && $spending->sub_type === 'lunch', 404);
+
+        $allocator = app(FundsAllocatorService::class);
+        $batches = $allocator->batchesWithNetAvailable();
+
+        return view('pettycash::spendings.meals.edit', compact('spending', 'batches'));
+    }
+
+    public function update(Request $request, Spending $spending)
+    {
+        abort_unless($spending->type === 'meal' && $spending->sub_type === 'lunch', 404);
+
+        $data = $request->validate([
+            'batch_id' => ['required', 'integer', 'exists:petty_batches,id'],
+            'reference' => ['required', 'string', 'max:255'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'transaction_cost' => ['nullable', 'numeric', 'min:0'],
+            'date' => ['required', 'date'],
+            'description' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $amount = (float) $data['amount'];
+        $fee = (float) ($data['transaction_cost'] ?? 0);
+        $allocator = app(FundsAllocatorService::class);
+
+        try {
+            DB::transaction(function () use ($spending, $data, $amount, $fee, $allocator) {
+                $spending->update([
+                    'reference' => $data['reference'],
+                    'amount' => $amount,
+                    'transaction_cost' => $fee,
+                    'date' => $data['date'],
+                    'description' => $data['description'] ?? null,
+                ]);
+
+                $allocator->allocateSmallestFirst($spending, $amount, $fee, (int) $data['batch_id']);
+            });
+        } catch (\Throwable $e) {
+            return back()->withErrors(['amount' => $e->getMessage()])->withInput();
+        }
+
+        return redirect()->route('petty.meals.index')->with('success', 'Meal updated.');
+    }
 }

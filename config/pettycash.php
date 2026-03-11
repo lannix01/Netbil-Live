@@ -1,6 +1,16 @@
 <?php
 
 return [
+    'ont_directory' => [
+        'enabled' => (bool) env('PETTY_ONT_DIRECTORY_ENABLED', true),
+        'strict_validation' => (bool) env('PETTY_ONT_STRICT_VALIDATION', true),
+        'endpoint' => (string) env('PETTY_ONT_ENDPOINT', 'https://api.skybrix.co.ke/v1/onts'),
+        'username' => (string) env('PETTY_ONT_USERNAME', ''),
+        'password' => (string) env('PETTY_ONT_PASSWORD', ''),
+        'timeout_seconds' => (int) env('PETTY_ONT_TIMEOUT_SECONDS', 12),
+        'cache_ttl_seconds' => (int) env('PETTY_ONT_CACHE_TTL_SECONDS', 300),
+    ],
+
     'api' => [
         'version' => (string) env('PETTY_API_VERSION', 'v1'),
 

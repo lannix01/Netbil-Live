@@ -20,6 +20,9 @@
     <meta charset="utf-8">
     <title>@yield('title', 'PettyCash')</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('assets/pettycash ico.png') }}">
+    <link rel="shortcut icon" href="{{ asset('assets/pettycash ico.png') }}">
+    <link rel="apple-touch-icon" href="{{ asset('assets/images/logo.png') }}">
 
     <style>
         :root{
@@ -443,6 +446,82 @@
             width:100% !important;
             margin:0 !important;
         }
+
+        /* Compact filters: keep filters secondary to main cards/tables */
+        .pc-filter-dock{
+            display:flex;
+            justify-content:flex-end;
+            margin:0 0 12px;
+        }
+        .pc-filter-panel{
+            width:min(100%, 760px);
+            border:1px solid #e4e7ec;
+            border-radius:12px;
+            background:#fff;
+            box-shadow:0 8px 20px rgba(16,24,40,.06);
+        }
+        .pc-filter-panel summary{
+            list-style:none;
+            cursor:pointer;
+            padding:10px 12px;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:10px;
+            font-size:12px;
+            font-weight:800;
+            color:#344054;
+        }
+        .pc-filter-panel summary::-webkit-details-marker{display:none}
+        .pc-filter-panel[open] summary{
+            border-bottom:1px solid #eaecf0;
+            background:#f8fafc;
+            border-radius:12px 12px 0 0;
+        }
+        .pc-filter-title{
+            display:inline-flex;
+            align-items:center;
+            gap:8px;
+        }
+        .pc-filter-title::before{
+            content:"";
+            width:6px;
+            height:6px;
+            border-radius:999px;
+            background:#6941c6;
+        }
+        .pc-filter-state{
+            font-size:11px;
+            font-weight:800;
+            color:#667085;
+            text-transform:uppercase;
+            letter-spacing:.04em;
+        }
+        .pc-filter-body{
+            padding:12px;
+        }
+        .pc-filter-row{
+            display:flex;
+            gap:10px;
+            align-items:flex-end;
+            flex-wrap:wrap;
+        }
+        .pc-filter-body .row,
+        .pc-filter-body .filters{
+            margin-top:0;
+        }
+        .pc-filter-row .muted{
+            font-size:11px;
+            margin-bottom:4px;
+        }
+        .pc-filter-row input,
+        .pc-filter-row select{
+            min-width:120px;
+        }
+        .pc-filter-grow{
+            flex:1 1 300px;
+            min-width:220px;
+        }
         @media(max-width:900px){
             .pc-field{grid-column:1 / -1}
             .pc-inline-grid .pc-field{grid-column:1 / -1}
@@ -610,52 +689,114 @@
             font-weight:800;
         }
 
-        .flash-wrap{
+        .pc-toast-stack{
             position:fixed;
-            top:16px;
-            right:16px;
-            z-index:70;
-            display:flex;
-            flex-direction:column;
-            gap:8px;
-            width:min(460px, calc(100vw - 24px));
+            top:74px;
+            left:50%;
+            transform:translateX(-50%);
+            z-index:120;
+            display:grid;
+            gap:10px;
+            width:min(540px, calc(100vw - 24px));
+            pointer-events:none;
         }
-        .flash{
-            border:1px solid #abefc6;
-            background:#ecfdf3;
-            color:#027a48;
-            border-radius:12px;
-            box-shadow:0 12px 30px rgba(16,24,40,.18);
-            padding:10px 14px;
+        .pc-toast{
+            pointer-events:auto;
+            border-radius:14px;
+            border:1px solid #d0d5dd;
+            background:#fff;
+            color:#101828;
+            box-shadow:0 18px 42px rgba(16,24,40,.20);
+            padding:12px 14px 10px;
+            animation:pcToastIn .22s ease-out;
+            display:grid;
+            gap:8px;
+        }
+        @keyframes pcToastIn{
+            from{opacity:0;transform:translateY(-10px) scale(.98)}
+            to{opacity:1;transform:translateY(0) scale(1)}
+        }
+        .pc-toast-main{
             display:flex;
             align-items:flex-start;
             justify-content:space-between;
             gap:10px;
+        }
+        .pc-toast-content{
+            display:flex;
+            align-items:flex-start;
+            gap:10px;
+            min-width:0;
+        }
+        .pc-toast-icon{
+            width:22px;
+            height:22px;
+            border-radius:50%;
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            font-size:12px;
+            font-weight:900;
+            flex:0 0 auto;
+            margin-top:1px;
+        }
+        .pc-toast-title{
+            font-size:12px;
+            font-weight:900;
+            letter-spacing:.02em;
+            text-transform:uppercase;
+            margin-bottom:2px;
+        }
+        .pc-toast-message{
             font-size:13px;
             font-weight:700;
+            line-height:1.4;
+            color:#101828;
+            word-break:break-word;
         }
-        .flash-error{
-            border-color:#fecdca;
-            background:#fef3f2;
-            color:#b42318;
-        }
-        .flash-close{
+        .pc-toast-close{
             border:none;
             background:transparent;
-            color:inherit;
+            color:#667085;
             font-weight:900;
             line-height:1;
             cursor:pointer;
             padding:0;
+            font-size:16px;
         }
+        .pc-toast-close:hover{color:#101828}
+        .pc-toast-progress{
+            height:3px;
+            border-radius:999px;
+            background:rgba(16,24,40,.09);
+            overflow:hidden;
+        }
+        .pc-toast-progress > i{
+            display:block;
+            height:100%;
+            width:100%;
+            transform-origin:left center;
+            animation:pcToastBar var(--toast-ms, 5600ms) linear forwards;
+        }
+        @keyframes pcToastBar{
+            from{transform:scaleX(1)}
+            to{transform:scaleX(0)}
+        }
+        .pc-toast-success{border-color:#abefc6;background:#f0fdf4}
+        .pc-toast-success .pc-toast-icon{background:#d1fadf;color:#067647}
+        .pc-toast-success .pc-toast-title{color:#067647}
+        .pc-toast-success .pc-toast-progress > i{background:#12b76a}
+        .pc-toast-error{border-color:#fecdca;background:#fef3f2}
+        .pc-toast-error .pc-toast-icon{background:#fee4e2;color:#b42318}
+        .pc-toast-error .pc-toast-title{color:#b42318}
+        .pc-toast-error .pc-toast-progress > i{background:#f04438}
+        .pc-toast-warning{border-color:#fedf89;background:#fffaeb}
+        .pc-toast-warning .pc-toast-icon{background:#fef0c7;color:#b54708}
+        .pc-toast-warning .pc-toast-title{color:#b54708}
+        .pc-toast-warning .pc-toast-progress > i{background:#f79009}
 
         @media(max-width:980px){
-            .flash-wrap{
-                left:12px;
-                right:12px;
-                top:66px;
-                width:auto;
-            }
+            .pc-toast-stack{top:66px}
             .petty-pager{
                 justify-content:center;
             }
@@ -673,20 +814,43 @@
 
     {{-- Main --}}
     <div class="main">
-        @if(session('success') || session('error'))
-            <div id="pettyFlashWrap" class="flash-wrap" role="status" aria-live="polite">
-                @if(session('success'))
-                    <div class="flash" data-auto-dismiss="1">
-                        <span>{{ session('success') }}</span>
-                        <button class="flash-close" type="button" onclick="dismissFlash(this)">×</button>
+        @php
+            $pettyToasts = [];
+            if (session('success')) {
+                $pettyToasts[] = ['type' => 'success', 'title' => 'Success', 'message' => (string) session('success'), 'dismiss_ms' => 5600];
+            }
+            if (session('error')) {
+                $pettyToasts[] = ['type' => 'error', 'title' => 'Error', 'message' => (string) session('error'), 'dismiss_ms' => 7600];
+            }
+            if (session('warning')) {
+                $pettyToasts[] = ['type' => 'warning', 'title' => 'Warning', 'message' => (string) session('warning'), 'dismiss_ms' => 6800];
+            }
+            if ($errors->any() && !session('error')) {
+                $pettyToasts[] = ['type' => 'error', 'title' => 'Validation Error', 'message' => (string) $errors->first(), 'dismiss_ms' => 7600];
+            }
+        @endphp
+        @if(!empty($pettyToasts))
+            <div id="pettyToastStack" class="pc-toast-stack" role="status" aria-live="polite">
+                @foreach($pettyToasts as $toast)
+                    @php
+                        $toastType = in_array($toast['type'], ['success', 'error', 'warning'], true) ? $toast['type'] : 'success';
+                        $toastDismissMs = (int) ($toast['dismiss_ms'] ?? 5600);
+                        $toastIcon = $toastType === 'success' ? '✓' : ($toastType === 'warning' ? '!' : '×');
+                    @endphp
+                    <div class="pc-toast pc-toast-{{ $toastType }}" data-auto-dismiss="1" data-dismiss-ms="{{ $toastDismissMs }}">
+                        <div class="pc-toast-main">
+                            <div class="pc-toast-content">
+                                <span class="pc-toast-icon" aria-hidden="true">{{ $toastIcon }}</span>
+                                <div>
+                                    <div class="pc-toast-title">{{ $toast['title'] }}</div>
+                                    <div class="pc-toast-message">{{ $toast['message'] }}</div>
+                                </div>
+                            </div>
+                            <button class="pc-toast-close" type="button" onclick="dismissToast(this)" aria-label="Dismiss notification">×</button>
+                        </div>
+                        <div class="pc-toast-progress" style="--toast-ms: {{ $toastDismissMs }}ms"><i></i></div>
                     </div>
-                @endif
-                @if(session('error'))
-                    <div class="flash flash-error" data-auto-dismiss="1">
-                        <span>{{ session('error') }}</span>
-                        <button class="flash-close" type="button" onclick="dismissFlash(this)">×</button>
-                    </div>
-                @endif
+                @endforeach
             </div>
         @endif
 
@@ -749,17 +913,53 @@
         document.body.classList.toggle('sidebar-open');
     }
 
-    function dismissFlash(button){
-        const flash = button?.closest('.flash');
-        if (flash) {
-            flash.remove();
+    function dismissToast(button){
+        const toast = button?.closest('.pc-toast');
+        if (toast) {
+            toast.remove();
         }
     }
 
-    document.querySelectorAll('.flash[data-auto-dismiss="1"]').forEach(function (flash) {
+    document.querySelectorAll('.pc-toast[data-auto-dismiss="1"]').forEach(function (toast) {
+        const timeoutMs = Math.max(2200, Number(toast.getAttribute('data-dismiss-ms') || 5600));
         window.setTimeout(function () {
-            flash.remove();
-        }, 5000);
+            toast.remove();
+        }, timeoutMs);
+    });
+
+    function closeActionMenus(exceptMenu){
+        document.querySelectorAll('details.action-menu[open]').forEach(function (menu) {
+            if (exceptMenu && menu === exceptMenu) return;
+            menu.removeAttribute('open');
+        });
+    }
+
+    document.addEventListener('toggle', function (event) {
+        const menu = event.target;
+        if (!(menu instanceof HTMLDetailsElement)) return;
+        if (!menu.matches('details.action-menu')) return;
+        if (menu.open) closeActionMenus(menu);
+    }, true);
+
+    document.addEventListener('click', function (event) {
+        const clickedMenu = event.target.closest('details.action-menu');
+        if (!clickedMenu) {
+            closeActionMenus();
+            return;
+        }
+
+        const clickedAction = event.target.closest('.action-menu-item');
+        if (clickedAction && clickedAction.getAttribute('aria-disabled') !== 'true') {
+            window.setTimeout(function () {
+                clickedMenu.removeAttribute('open');
+            }, 0);
+        }
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+            closeActionMenus();
+        }
     });
 
     function toggleProfileMenu(event){

@@ -18,12 +18,13 @@
     .ont-smart-item:hover,.ont-smart-item.active{background:#eef4ff}
     .ont-smart-empty{padding:10px 12px;color:#667085;font-size:13px}
     .ont-smart-item-title{font-weight:800;color:#101828}
-    .ont-smart-item-meta{margin-top:4px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+    .ont-smart-item-meta{margin-top:4px;display:grid;grid-template-columns:repeat(3,minmax(0,max-content));align-items:center;gap:8px}
     .ont-smart-item-site{font-size:12px;color:#667085}
+    .ont-smart-item-sn{font-size:12px;color:#667085}
     .ont-status-chip{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.02em;border:1px solid transparent}
     .ont-status-chip.success{background:#ecfdf3;border-color:#abefc6;color:#027a48}
     .ont-status-chip.muted{background:#f2f4f7;border-color:#d0d5dd;color:#475467}
-    .ont-preview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+    .ont-preview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
     .ont-meta{border:1px solid #eaecf0;background:#fcfcfd;border-radius:12px;padding:10px}
     .ont-meta .label{font-size:11px;letter-spacing:.04em;font-weight:800;color:#667085;text-transform:uppercase}
     .ont-meta .value{margin-top:4px;font-size:14px;font-weight:800;color:#101828}
@@ -35,7 +36,6 @@
 
 @section('content')
 @php
-    $canRecordPayment = \App\Modules\PettyCash\Support\PettyAccess::allows(auth('petty')->user(), 'tokens.record_payment');
     $ontHostels = (array) ($ontCatalog['hostels'] ?? []);
     $ontAvailable = (bool) ($ontCatalog['available'] ?? false);
     $ontMessage = (string) ($ontCatalog['message'] ?? '');
@@ -55,6 +55,7 @@
     <div class="form-header">
         <div>
             <h2>Add Hostel</h2>
+            <div class="form-subtitle">Step 1 of 2: Create hostel profile from ONT, then set agreement details.</div>
         </div>
         <a class="btn2" href="{{ route('petty.tokens.index') }}">Back</a>
     </div>
@@ -82,6 +83,7 @@
                             $optKey = (string) ($candidate['key'] ?? '');
                             $optName = (string) ($candidate['hostel_name'] ?? '');
                             $optSiteId = (string) ($candidate['site_id'] ?? '');
+                            $optSiteSn = (string) ($candidate['site_sn'] ?? '');
                             $optMergeStatus = (string) ($candidate['merge_status'] ?? 'unlinked');
                             $optMergeLabel = (string) ($candidate['merge_status_label'] ?? 'Not Added');
                             $optMergeTone = (string) ($candidate['merge_status_tone'] ?? 'muted');
@@ -90,6 +92,7 @@
                             value="{{ $optKey }}"
                             data-name="{{ $optName }}"
                             data-site-id="{{ $optSiteId }}"
+                            data-site-sn="{{ $optSiteSn }}"
                             data-merge-status="{{ $optMergeStatus }}"
                             data-merge-status-label="{{ $optMergeLabel }}"
                             data-merge-status-tone="{{ $optMergeTone }}"
@@ -114,6 +117,10 @@
                         <div class="value" id="selectedSitePreview">-</div>
                     </div>
                     <div class="ont-meta">
+                        <div class="label">Site S.N</div>
+                        <div class="value" id="selectedSnPreview">-</div>
+                    </div>
+                    <div class="ont-meta">
                         <div class="label">Merge Status</div>
                         <div class="value">
                             <span class="ont-status-chip muted" id="selectedMergeStatus">Not Added</span>
@@ -123,26 +130,8 @@
             </div>
 
             <div class="pc-field">
-                <label>Meter No</label>
-                <input class="pc-input" name="meter_no" required value="{{ old('meter_no') }}">
-            </div>
-
-            <div class="pc-field">
                 <label>Contact Person</label>
                 <input class="pc-input" name="contact_person" value="{{ old('contact_person') }}">
-            </div>
-
-            <div class="pc-field">
-                <label>Phone No (payment number)</label>
-                <input class="pc-input" name="phone_no" value="{{ old('phone_no') }}">
-            </div>
-
-            <div class="pc-field">
-                <label>Stake</label>
-                <select class="pc-select" name="stake" required>
-                    <option value="monthly" @selected(old('stake')==='monthly')>Monthly</option>
-                    <option value="semester" @selected(old('stake')==='semester')>Semester</option>
-                </select>
             </div>
 
             <div class="pc-field">
@@ -150,16 +139,15 @@
                 <input class="pc-input" id="noOfRoutersInput" type="number" min="0" name="no_of_routers" value="{{ old('no_of_routers', 0) }}">
             </div>
 
-            <div class="pc-field">
-                <label>Amount Due</label>
-                <input class="pc-input" type="number" step="0.01" name="amount_due" required value="{{ old('amount_due', 0) }}">
+            <div class="pc-field full">
+                <div class="status-banner ok" style="margin-top:0">
+                    After saving this step, you will set agreement type:
+                    <strong>Token</strong>, <strong>Send Money</strong>, <strong>Package</strong>, or <strong>No Agreement</strong>.
+                </div>
             </div>
 
             <div class="pc-actions">
-                <button class="btn" type="submit" @disabled(!$ontAvailable)>Save Hostel</button>
-                @if($canRecordPayment)
-                    <button class="btn2" type="submit" name="after_save" value="record_payment" @disabled(!$ontAvailable)>Save Hostel and Record Payment</button>
-                @endif
+                <button class="btn" type="submit" @disabled(!$ontAvailable)>Save and Continue to Agreement</button>
             </div>
         </form>
     </div>
@@ -174,10 +162,11 @@
     const hostelNameHidden = document.getElementById('hostelNameHidden');
     const hostelPreview = document.getElementById('selectedHostelPreview');
     const sitePreview = document.getElementById('selectedSitePreview');
+    const snPreview = document.getElementById('selectedSnPreview');
     const mergeStatusPreview = document.getElementById('selectedMergeStatus');
     const searchUrl = ontSmart ? String(ontSmart.dataset.searchUrl || '') : '';
 
-    if (!ontSelect || !ontSmart || !hostelNameHidden || !hostelPreview || !sitePreview || !mergeStatusPreview || !searchUrl) {
+    if (!ontSelect || !ontSmart || !hostelNameHidden || !hostelPreview || !sitePreview || !snPreview || !mergeStatusPreview || !searchUrl) {
         return;
     }
 
@@ -193,18 +182,21 @@
             hostelNameHidden.value = '';
             hostelPreview.textContent = '-';
             sitePreview.textContent = '-';
+            snPreview.textContent = '-';
             syncStatusChip('Not Added', 'muted');
             return;
         }
 
         const hostelName = selected.dataset.name || '';
         const siteId = selected.dataset.siteId || '';
+        const siteSn = selected.dataset.siteSn || '';
         const mergeLabel = selected.dataset.mergeStatusLabel || 'Not Added';
         const mergeTone = selected.dataset.mergeStatusTone || 'muted';
 
         hostelNameHidden.value = hostelName;
         hostelPreview.textContent = hostelName || '-';
         sitePreview.textContent = siteId !== '' ? ('Site ' + siteId) : 'No site id';
+        snPreview.textContent = siteSn !== '' ? siteSn : '-';
         syncStatusChip(mergeLabel, mergeTone);
     }
 
@@ -255,6 +247,7 @@
 
             option.dataset.name = String(item.hostel_name || '');
             option.dataset.siteId = String(item.site_id || '');
+            option.dataset.siteSn = String(item.site_sn || '');
             option.dataset.mergeStatus = String(item.merge_status || 'unlinked');
             option.dataset.mergeStatusLabel = String(item.merge_status_label || 'Not Added');
             option.dataset.mergeStatusTone = String(item.merge_status_tone || 'muted');
@@ -296,11 +289,16 @@
                 site.className = 'ont-smart-item-site';
                 site.textContent = item.site_id ? ('Site ' + item.site_id) : 'No site id';
 
+                const sn = document.createElement('span');
+                sn.className = 'ont-smart-item-sn';
+                sn.textContent = 'S.N ' + String(item.site_sn || '-');
+
                 const status = document.createElement('span');
                 status.className = 'ont-status-chip ' + (String(item.merge_status_tone || 'muted') === 'success' ? 'success' : 'muted');
                 status.textContent = String(item.merge_status_label || 'Not Added');
 
                 meta.appendChild(site);
+                meta.appendChild(sn);
                 meta.appendChild(status);
                 btn.appendChild(title);
                 btn.appendChild(meta);

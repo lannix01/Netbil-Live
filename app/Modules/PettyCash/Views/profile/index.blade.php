@@ -21,6 +21,8 @@
     .badge-ok{background:#ecfdf3;color:#027a48;border:1px solid #abefc6}
     .badge-off{background:#fef3f2;color:#b42318;border:1px solid #fecdca}
     .badge-current{background:#eff8ff;color:#175cd3;border:1px solid #b2ddff}
+    .btn-link{display:inline-block;padding:8px 10px;border:1px solid #d0d5dd;border-radius:10px;background:#fff;color:#344054;text-decoration:none;font-size:12px;font-weight:700}
+    .btn-link[disabled]{opacity:.6;cursor:not-allowed}
     table{width:100%;border-collapse:collapse;margin-top:10px}
     th,td{padding:10px;border-bottom:1px solid #eef2f6;font-size:13px;text-align:left;vertical-align:top}
     th{font-size:12px;color:#475467;white-space:nowrap}
@@ -146,6 +148,10 @@
                         <th>Name</th>
                         <th>Email</th>
                         <th>Role</th>
+                        @if($supportsPhoneNo)
+                            <th>Phone</th>
+                            <th>Login SMS</th>
+                        @endif
                         <th>Status</th>
                         <th>Last Login</th>
                     </tr>
@@ -156,6 +162,22 @@
                             <td><strong>{{ $u->name }}</strong></td>
                             <td>{{ $u->email }}</td>
                             <td>{{ strtoupper((string) ($u->role ?? 'user')) }}</td>
+                            @if($supportsPhoneNo)
+                                <td>
+                                    {{ $u->phone_no ?: '-' }}
+                                    @if($supportsLoginSmsTracking && $u->login_sms_sent_at)
+                                        <div class="muted">Last SMS: {{ $u->login_sms_sent_at->format('Y-m-d H:i') }}</div>
+                                    @endif
+                                </td>
+                                <td>
+                                    <form method="POST" action="{{ route('petty.profile.users.send_login_sms', $u->id) }}" style="margin:0" onsubmit="return confirm('Send new login credentials by SMS to this user? This will reset their password.');">
+                                        @csrf
+                                        <button class="btn-link" type="submit" @disabled(empty($u->phone_no))>
+                                            Send Login SMS
+                                        </button>
+                                    </form>
+                                </td>
+                            @endif
                             <td>
                                 <span class="badge {{ $u->is_active ? 'badge-ok' : 'badge-off' }}">
                                     {{ $u->is_active ? 'Active' : 'Disabled' }}
@@ -164,7 +186,7 @@
                             <td>{{ $u->last_login_at?->format('Y-m-d H:i') ?? '-' }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="muted">No other users available.</td></tr>
+                        <tr><td colspan="{{ $supportsPhoneNo ? 7 : 5 }}" class="muted">No other users available.</td></tr>
                     @endforelse
                     </tbody>
                 </table>

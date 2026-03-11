@@ -115,24 +115,35 @@
 
     <div class="card">
         <h3 class="sub-title">In-App Notifications</h3>
-        <form class="filters" method="GET" action="{{ route('petty.notifications.index') }}">
-            <input class="input" name="q" value="{{ $q ?? '' }}" placeholder="Search hostel, meter, phone, title...">
-            <select class="input" style="width:220px" name="type">
-                <option value="">All types</option>
-                @foreach(['token_due_3','token_due_2','token_due_1','token_due_today','token_overdue','due_tomorrow_shortfall','low_balance','low_credit'] as $t)
-                    <option value="{{ $t }}" @if(($type ?? '') === $t) selected @endif>{{ $t }}</option>
-                @endforeach
-            </select>
-            <select class="input" style="width:160px" name="unread">
-                <option value="">All</option>
-                <option value="1" @if((string)($unread ?? '') === '1') selected @endif>Unread</option>
-                <option value="0" @if((string)($unread ?? '') === '0') selected @endif>Read</option>
-            </select>
-            <button class="btn2" type="submit">Filter</button>
-            @if(!empty($q) || !empty($type) || (($unread ?? '') !== ''))
-                <a class="btn2" href="{{ route('petty.notifications.index') }}">Clear</a>
-            @endif
-        </form>
+        @php $hasNotifFilter = !empty($q) || !empty($type) || (($unread ?? '') !== ''); @endphp
+        <div class="pc-filter-dock">
+            <details class="pc-filter-panel" @if($hasNotifFilter) open @endif>
+                <summary>
+                    <span class="pc-filter-title">Filters</span>
+                    <span class="pc-filter-state">{{ $hasNotifFilter ? 'active' : 'optional' }}</span>
+                </summary>
+                <div class="pc-filter-body">
+                    <form class="filters pc-filter-row" method="GET" action="{{ route('petty.notifications.index') }}">
+                        <input class="input pc-filter-grow" name="q" value="{{ $q ?? '' }}" placeholder="Search hostel, meter, phone, title...">
+                        <select class="input" style="width:220px" name="type">
+                            <option value="">All types</option>
+                            @foreach(['token_due_3','token_due_2','token_due_1','token_due_today','token_overdue','due_tomorrow_shortfall','low_balance','low_credit'] as $t)
+                                <option value="{{ $t }}" @if(($type ?? '') === $t) selected @endif>{{ $t }}</option>
+                            @endforeach
+                        </select>
+                        <select class="input" style="width:160px" name="unread">
+                            <option value="">All</option>
+                            <option value="1" @if((string)($unread ?? '') === '1') selected @endif>Unread</option>
+                            <option value="0" @if((string)($unread ?? '') === '0') selected @endif>Read</option>
+                        </select>
+                        <button class="btn2" type="submit">Filter</button>
+                        @if($hasNotifFilter)
+                            <a class="btn2" href="{{ route('petty.notifications.index') }}">Clear</a>
+                        @endif
+                    </form>
+                </div>
+            </details>
+        </div>
 
         <div class="table-wrap">
             <table>

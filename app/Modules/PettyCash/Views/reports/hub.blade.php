@@ -89,34 +89,44 @@
         <div class="title">Quick Filters</div>
         <div class="desc">These apply to quick exports (Credits/Bikes/Meals/Others). Board report uses its own builder.</div>
 
-        <form method="GET" action="{{ route('petty.reports.index') }}" class="row">
-            <div>
-                <div class="muted">From</div>
-                <input type="date" name="from" value="{{ $from }}">
-            </div>
-            <div>
-                <div class="muted">To</div>
-                <input type="date" name="to" value="{{ $to }}">
-            </div>
-            <div>
-                <div class="muted">Batch</div>
-                <select name="batch_id">
-                    <option value="">All</option>
-                    @foreach($batches as $b)
-                        <option value="{{ $b->id }}" @selected((string)$batchId === (string)$b->id)>{{ $b->batch_no }}</option>
-                    @endforeach
-                </select>
-            </div>
+        <div class="pc-filter-dock">
+            <details class="pc-filter-panel" @if(filled($from) || filled($to) || filled($batchId)) open @endif>
+                <summary>
+                    <span class="pc-filter-title">Filters</span>
+                    <span class="pc-filter-state">{{ filled($from) || filled($to) || filled($batchId) ? 'active' : 'optional' }}</span>
+                </summary>
+                <div class="pc-filter-body">
+                    <form method="GET" action="{{ route('petty.reports.index') }}" class="row pc-filter-row">
+                        <div>
+                            <div class="muted">From</div>
+                            <input type="date" name="from" value="{{ $from }}">
+                        </div>
+                        <div>
+                            <div class="muted">To</div>
+                            <input type="date" name="to" value="{{ $to }}">
+                        </div>
+                        <div>
+                            <div class="muted">Batch</div>
+                            <select name="batch_id">
+                                <option value="">All</option>
+                                @foreach($batches as $b)
+                                    <option value="{{ $b->id }}" @selected((string)$batchId === (string)$b->id)>{{ $b->batch_no }}</option>
+                                @endforeach
+                            </select>
+                        </div>
 
-            <button class="btn" type="submit">Apply</button>
-            <a class="btn2" href="{{ route('petty.reports.index') }}">Reset</a>
+                        <button class="btn" type="submit">Apply</button>
+                        <a class="btn2" href="{{ route('petty.reports.index') }}">Reset</a>
 
-            <div class="muted" style="flex-basis:100%">
-                Current:
-                <span class="pill">{{ $from ?: 'All' }}</span> → <span class="pill">{{ $to ?: 'All' }}</span>
-                @if($batchId) <span class="pill">Batch {{ $batchId }}</span> @endif
-            </div>
-        </form>
+                        <div class="muted" style="flex-basis:100%">
+                            Current:
+                            <span class="pill">{{ $from ?: 'All' }}</span> → <span class="pill">{{ $to ?: 'All' }}</span>
+                            @if($batchId) <span class="pill">Batch {{ $batchId }}</span> @endif
+                        </div>
+                    </form>
+                </div>
+            </details>
+        </div>
 
         <div class="divider"></div>
 
@@ -128,9 +138,13 @@
                 <div class="title">Credits Export</div>
                 <p class="desc">All credits (supports date filter).</p>
                 <div style="display:flex;gap:8px;flex-wrap:wrap">
-                    <a class="btn" href="{{ route('petty.credits.pdf', ['from'=>$from,'to'=>$to,'format'=>'pdf']) }}">PDF</a>
-                    <a class="btn2" href="{{ route('petty.credits.pdf', ['from'=>$from,'to'=>$to,'format'=>'csv']) }}">CSV</a>
-                    <a class="btn2" href="{{ route('petty.credits.pdf', ['from'=>$from,'to'=>$to,'format'=>'excel']) }}">Excel</a>
+                    @include('pettycash::partials.export_select', [
+                        'options' => [
+                            'PDF' => route('petty.credits.pdf', ['from'=>$from,'to'=>$to,'format'=>'pdf']),
+                            'CSV' => route('petty.credits.pdf', ['from'=>$from,'to'=>$to,'format'=>'csv']),
+                            'Excel' => route('petty.credits.pdf', ['from'=>$from,'to'=>$to,'format'=>'excel']),
+                        ],
+                    ])
                 </div>
             </div>
 
@@ -138,9 +152,13 @@
                 <div class="title">Bikes Spendings Export</div>
                 <p class="desc">Fuel + maintenance (supports date + batch filter).</p>
                 <div style="display:flex;gap:8px;flex-wrap:wrap">
-                    <a class="btn" href="{{ route('petty.bikes.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'pdf']) }}">PDF</a>
-                    <a class="btn2" href="{{ route('petty.bikes.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'csv']) }}">CSV</a>
-                    <a class="btn2" href="{{ route('petty.bikes.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'excel']) }}">Excel</a>
+                    @include('pettycash::partials.export_select', [
+                        'options' => [
+                            'PDF' => route('petty.bikes.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'pdf']),
+                            'CSV' => route('petty.bikes.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'csv']),
+                            'Excel' => route('petty.bikes.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'excel']),
+                        ],
+                    ])
                 </div>
             </div>
 
@@ -148,9 +166,13 @@
                 <div class="title">Meals (Lunch) Export</div>
                 <p class="desc">Lunch spendings (supports date + batch filter).</p>
                 <div style="display:flex;gap:8px;flex-wrap:wrap">
-                    <a class="btn" href="{{ route('petty.meals.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'pdf']) }}">PDF</a>
-                    <a class="btn2" href="{{ route('petty.meals.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'csv']) }}">CSV</a>
-                    <a class="btn2" href="{{ route('petty.meals.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'excel']) }}">Excel</a>
+                    @include('pettycash::partials.export_select', [
+                        'options' => [
+                            'PDF' => route('petty.meals.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'pdf']),
+                            'CSV' => route('petty.meals.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'csv']),
+                            'Excel' => route('petty.meals.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'excel']),
+                        ],
+                    ])
                 </div>
             </div>
 
@@ -158,9 +180,13 @@
                 <div class="title">Token Hostels Export</div>
                 <p class="desc">Hostels summary (last payment tags included).</p>
                 <div style="display:flex;gap:8px;flex-wrap:wrap">
-                    <a class="btn" href="{{ route('petty.tokens.pdf', ['format'=>'pdf']) }}">PDF</a>
-                    <a class="btn2" href="{{ route('petty.tokens.pdf', ['format'=>'csv']) }}">CSV</a>
-                    <a class="btn2" href="{{ route('petty.tokens.pdf', ['format'=>'excel']) }}">Excel</a>
+                    @include('pettycash::partials.export_select', [
+                        'options' => [
+                            'PDF' => route('petty.tokens.pdf', ['format'=>'pdf']),
+                            'CSV' => route('petty.tokens.pdf', ['format'=>'csv']),
+                            'Excel' => route('petty.tokens.pdf', ['format'=>'excel']),
+                        ],
+                    ])
                 </div>
             </div>
 
@@ -168,9 +194,13 @@
                 <div class="title">Others Export</div>
                 <p class="desc">Other spendings (supports date + batch filter).</p>
                 <div style="display:flex;gap:8px;flex-wrap:wrap">
-                    <a class="btn" href="{{ route('petty.others.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'pdf']) }}">PDF</a>
-                    <a class="btn2" href="{{ route('petty.others.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'csv']) }}">CSV</a>
-                    <a class="btn2" href="{{ route('petty.others.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'excel']) }}">Excel</a>
+                    @include('pettycash::partials.export_select', [
+                        'options' => [
+                            'PDF' => route('petty.others.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'pdf']),
+                            'CSV' => route('petty.others.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'csv']),
+                            'Excel' => route('petty.others.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'excel']),
+                        ],
+                    ])
                 </div>
             </div>
 
@@ -185,11 +215,15 @@
                     @endforeach
                 </select>
 
-                <div style="display:flex;gap:8px;flex-wrap:wrap">
-                    <a class="btn" href="#" data-format="pdf" onclick="return downloadHostelPayments(this.dataset.format)">PDF</a>
-                    <a class="btn2" href="#" data-format="csv" onclick="return downloadHostelPayments(this.dataset.format)">CSV</a>
-                    <a class="btn2" href="#" data-format="excel" onclick="return downloadHostelPayments(this.dataset.format)">Excel</a>
-                </div>
+                <label style="display:inline-flex;align-items:center;gap:8px">
+                    <span class="muted">Export</span>
+                    <select onchange="if(this.value){downloadHostelPayments(this.value);this.selectedIndex=0;}">
+                        <option value="">Select format</option>
+                        <option value="pdf">PDF</option>
+                        <option value="csv">CSV</option>
+                        <option value="excel">Excel</option>
+                    </select>
+                </label>
             </div>
         </div>
     </div>

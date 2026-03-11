@@ -4,6 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>PettyCash Login</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('assets/pettycash ico.png') }}">
+    <link rel="shortcut icon" href="{{ asset('assets/pettycash ico.png') }}">
+    <link rel="apple-touch-icon" href="{{ asset('assets/images/logo.png') }}">
     <style>
         body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#f6f7fb; margin:0; }
         .wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }

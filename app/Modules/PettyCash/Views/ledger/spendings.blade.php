@@ -54,67 +54,71 @@
                 <span class="muted" style="font-weight:800;color:#344054">Include calculations in PDF</span>
             </label>
 
-            <a id="exportPdfBtn" class="btn2" href="{{ route('petty.ledger.spendings', array_merge($qs, ['export' => 'pdf'])) }}">
-                Export PDF
-            </a>
-            <a id="exportCsvBtn" class="btn2" href="{{ route('petty.ledger.spendings', array_merge($qs, ['export' => 'csv'])) }}">
-                Export CSV
-            </a>
-            <a id="exportExcelBtn" class="btn2" href="{{ route('petty.ledger.spendings', array_merge($qs, ['export' => 'excel'])) }}">
-                Export Excel
-            </a>
+            <label style="display:inline-flex;align-items:center;gap:8px">
+                <span class="muted" style="font-weight:800;color:#344054">Export</span>
+                <select id="exportSelect">
+                    <option value="">Select format</option>
+                    <option data-format="pdf" value="{{ route('petty.ledger.spendings', array_merge($qs, ['export' => 'pdf'])) }}">PDF</option>
+                    <option data-format="csv" value="{{ route('petty.ledger.spendings', array_merge($qs, ['export' => 'csv'])) }}">CSV</option>
+                    <option data-format="excel" value="{{ route('petty.ledger.spendings', array_merge($qs, ['export' => 'excel'])) }}">Excel</option>
+                </select>
+            </label>
 
             <a class="btn2" href="{{ route('petty.ledger.spendings') }}">Reset</a>
         </div>
     </div>
 
     <div class="card">
-        <form id="ledgerForm" method="GET" class="row" action="{{ route('petty.ledger.spendings') }}">
-            <div>
-                <div class="muted">From</div>
-                <input type="date" name="from" value="{{ $from }}">
-            </div>
+        <div class="pc-filter-dock">
+            <details class="pc-filter-panel" @if(filled($from) || filled($to) || filled($batchId) || filled($type) || filled($q)) open @endif>
+                <summary>
+                    <span class="pc-filter-title">Filters</span>
+                    <span class="pc-filter-state">{{ filled($from) || filled($to) || filled($batchId) || filled($type) || filled($q) ? 'active' : 'optional' }}</span>
+                </summary>
+                <div class="pc-filter-body">
+                    <form id="ledgerForm" method="GET" class="row pc-filter-row" action="{{ route('petty.ledger.spendings') }}">
+                        <div>
+                            <div class="muted">From</div>
+                            <input type="date" name="from" value="{{ $from }}">
+                        </div>
 
-            <div>
-                <div class="muted">To</div>
-                <input type="date" name="to" value="{{ $to }}">
-            </div>
+                        <div>
+                            <div class="muted">To</div>
+                            <input type="date" name="to" value="{{ $to }}">
+                        </div>
 
-            <div>
-                <div class="muted">Batch</div>
-                <select name="batch_id">
-                    <option value="">All batches</option>
-                    @foreach($batches as $b)
-                        <option value="{{ $b->id }}" @selected((string)$batchId === (string)$b->id)>{{ $b->batch_no }}</option>
-                    @endforeach
-                </select>
-                {{-- <div class="small">Applies to spendings only</div> --}}
-            </div>
+                        <div>
+                            <div class="muted">Batch</div>
+                            <select name="batch_id">
+                                <option value="">All batches</option>
+                                @foreach($batches as $b)
+                                    <option value="{{ $b->id }}" @selected((string)$batchId === (string)$b->id)>{{ $b->batch_no }}</option>
+                                @endforeach
+                            </select>
+                        </div>
 
-            <div>
-                <div class="muted">Category</div>
-                <select name="type">
-                    <option value="">All</option>
-                    <option value="bike" @selected($type==='bike')>Bike</option>
-                    <option value="fuel" @selected($type==='fuel')>Fuel</option>
-                    <option value="meal" @selected($type==='meal')>Meal</option>
-                    <option value="token" @selected($type==='token')>Token</option>
-                    <option value="other" @selected($type==='other')>Other</option>
-                </select>
-            </div>
+                        <div>
+                            <div class="muted">Category</div>
+                            <select name="type">
+                                <option value="">All</option>
+                                <option value="bike" @selected($type==='bike')>Bike</option>
+                                <option value="fuel" @selected($type==='fuel')>Fuel</option>
+                                <option value="meal" @selected($type==='meal')>Meal</option>
+                                <option value="token" @selected($type==='token')>Token</option>
+                                <option value="other" @selected($type==='other')>Other</option>
+                            </select>
+                        </div>
 
-            <div style="flex:1;min-width:320px">
-                {{-- <div class="muted">Search (Reference / Transaction Ref)</div> --}}
-                <input id="qInput" type="text" name="q" value="{{ $q }}"
-                       placeholder="Search MPESA ref" autocomplete="off">
-            </div>
+                        <div class="pc-filter-grow">
+                            <input id="qInput" type="text" name="q" value="{{ $q }}"
+                                   placeholder="Search MPESA ref" autocomplete="off">
+                        </div>
 
-            <button type="submit" style="display:none"></button>
-{{-- 
-            <div class="muted" style="flex-basis:100%">
-                Note: Service rows come from <code>petty_bike_services</code>.
-            </div> --}}
-        </form>
+                        <button type="submit" style="display:none"></button>
+                    </form>
+                </div>
+            </details>
+        </div>
 
         <div id="ledgerTableWrap">
             @include('pettycash::ledger._table', ['rows' => ($rows ?? $spendings ?? collect())])
@@ -130,9 +134,7 @@
     const liveText = document.getElementById('liveText');
     const resultCount = document.getElementById('resultCount');
 
-    const exportPdfBtn = document.getElementById('exportPdfBtn');
-    const exportCsvBtn = document.getElementById('exportCsvBtn');
-    const exportExcelBtn = document.getElementById('exportExcelBtn');
+    const exportSelect = document.getElementById('exportSelect');
     const calcToggle = document.getElementById('calcToggle');
 
     let activeController = null;
@@ -159,9 +161,12 @@
 
     function syncExportHref(){
         const calc = calcToggle.checked ? 1 : 0;
-        exportPdfBtn.href = buildUrl({ export: 'pdf', calc });
-        exportCsvBtn.href = buildUrl({ export: 'csv', calc });
-        exportExcelBtn.href = buildUrl({ export: 'excel', calc });
+        if (!exportSelect) return;
+        Array.from(exportSelect.options).forEach(option => {
+            const format = option.dataset.format;
+            if (!format) return;
+            option.value = buildUrl({ export: format, calc });
+        });
     }
 
     const doSearch = debounce(async () => {
@@ -199,6 +204,13 @@
     });
 
     calcToggle.addEventListener('change', syncExportHref);
+    if (exportSelect) {
+        exportSelect.addEventListener('change', function () {
+            if (!this.value) return;
+            window.location.href = this.value;
+            this.selectedIndex = 0;
+        });
+    }
 
     // initial
     syncExportHref();

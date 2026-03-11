@@ -84,6 +84,13 @@
                             <label for="create_email">Email</label>
                             <input id="create_email" class="input" type="email" name="create[email]" value="{{ old('create.email') }}" required>
                         </div>
+                        @if($supportsPhoneNo)
+                            <div class="field">
+                                <label for="create_phone_no">Phone No (SMS)</label>
+                                <input id="create_phone_no" class="input" type="text" name="create[phone_no]" value="{{ old('create.phone_no') }}" placeholder="07XXXXXXXX" inputmode="numeric" maxlength="10" pattern="07[0-9]{8}" required>
+                                <div class="muted">Use 07XXXXXXXX format.</div>
+                            </div>
+                        @endif
                         <div class="field">
                             <label for="create_role">Role</label>
                             <select id="create_role" class="select" name="create[role]" required>
@@ -101,6 +108,11 @@
                                 <input type="checkbox" name="create[is_active]" value="1" @checked((string) old('create.is_active', '1') === '1')>
                                 <span>Allow login immediately</span>
                             </label>
+                        </div>
+                        <div class="field">
+                            <label>Login SMS</label>
+                            <input type="hidden" name="create[send_login_sms]" value="1">
+                            <div class="muted">Login details are sent by SMS automatically after user creation.</div>
                         </div>
                         <div class="field">
                             <label for="create_password">Password</label>
@@ -124,6 +136,9 @@
                     <tr>
                         <th>Name</th>
                         <th>Role</th>
+                        @if($supportsPhoneNo)
+                            <th>Phone</th>
+                        @endif
                         <th>Status</th>
                         <th>Last Login</th>
                         <th></th>
@@ -141,6 +156,9 @@
                                 <div class="muted">{{ $u->email }}</div>
                             </td>
                             <td><span class="badge badge-role">{{ $displayRole }}</span></td>
+                            @if($supportsPhoneNo)
+                                <td>{{ $u->phone_no ?: '-' }}</td>
+                            @endif
                             <td>
                                 <span class="badge {{ $u->is_active ? 'badge-ok' : 'badge-off' }}">
                                     {{ $u->is_active ? 'Active' : 'Disabled' }}
@@ -154,7 +172,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="muted">No petty users found.</td></tr>
+                        <tr><td colspan="{{ $supportsPhoneNo ? 6 : 5 }}" class="muted">No petty users found.</td></tr>
                     @endforelse
                     </tbody>
                 </table>
@@ -206,6 +224,12 @@
                                 <span>Allow this user to login</span>
                             </label>
                         </div>
+                        @if($supportsPhoneNo)
+                            <div class="field">
+                                <label for="phone_no">Phone No (SMS)</label>
+                                <input id="phone_no" class="input" type="text" name="phone_no" value="{{ old('phone_no', $selectedUser->phone_no) }}" placeholder="07XXXXXXXX">
+                            </div>
+                        @endif
                         <div class="field">
                             <label for="password">New Password (optional)</label>
                             <input id="password" class="input" type="password" name="password" placeholder="Leave blank to keep current password">

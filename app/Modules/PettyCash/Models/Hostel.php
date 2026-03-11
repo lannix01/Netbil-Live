@@ -10,15 +10,27 @@ class Hostel extends Model
 
     protected $fillable = [
         'hostel_name',
+        'contact_person',
+        'ont_site_id',
+        'ont_site_sn',
+        'agreement_type',
+        'agreement_label',
         'meter_no',
         'phone_no',
         'no_of_routers',
         'stake',
         'amount_due',
+        'ont_merged',
     ];
 
     protected $casts = [
         'no_of_routers' => 'integer',
         'amount_due' => 'float',
+        'ont_merged' => 'boolean',
     ];
+
+    public function pendingCredits()
+    {
+        return $this->hasMany(HostelPendingCredit::class, 'hostel_id');
+    }
 }

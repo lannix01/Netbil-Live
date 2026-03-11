@@ -20,6 +20,9 @@
 @endpush
 
 @section('content')
+@php
+    $canEditCredit = \App\Modules\PettyCash\Support\PettyAccess::allows(auth('petty')->user(), 'credits.edit');
+@endphp
 <div class="wrap">
     <div class="top">
         <div>
@@ -28,25 +31,39 @@
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
             <a class="btn" href="{{ route('petty.credits.create') }}">+ New Credit</a>
-            <a class="btn2" href="{{ route('petty.credits.pdf', ['from' => $from, 'to' => $to, 'format' => 'pdf']) }}">PDF</a>
-            <a class="btn2" href="{{ route('petty.credits.pdf', ['from' => $from, 'to' => $to, 'format' => 'csv']) }}">CSV</a>
-            <a class="btn2" href="{{ route('petty.credits.pdf', ['from' => $from, 'to' => $to, 'format' => 'excel']) }}">Excel</a>
+            @include('pettycash::partials.export_select', [
+                'options' => [
+                    'PDF' => route('petty.credits.pdf', ['from' => $from, 'to' => $to, 'format' => 'pdf']),
+                    'CSV' => route('petty.credits.pdf', ['from' => $from, 'to' => $to, 'format' => 'csv']),
+                    'Excel' => route('petty.credits.pdf', ['from' => $from, 'to' => $to, 'format' => 'excel']),
+                ],
+            ])
         </div>
     </div>
 
     <div class="card">
-        <form method="GET" class="row" action="{{ route('petty.credits.index') }}">
-            <div>
-                <div class="muted">From</div>
-                <input type="date" name="from" value="{{ $from }}">
-            </div>
-            <div>
-                <div class="muted">To</div>
-                <input type="date" name="to" value="{{ $to }}">
-            </div>
-            <button class="btn" type="submit">Filter</button>
-            <a class="btn2" href="{{ route('petty.credits.index') }}">Reset</a>
-        </form>
+        <div class="pc-filter-dock">
+            <details class="pc-filter-panel" @if(filled($from) || filled($to)) open @endif>
+                <summary>
+                    <span class="pc-filter-title">Filters</span>
+                    <span class="pc-filter-state">{{ filled($from) || filled($to) ? 'active' : 'optional' }}</span>
+                </summary>
+                <div class="pc-filter-body">
+                    <form method="GET" class="row pc-filter-row" action="{{ route('petty.credits.index') }}">
+                        <div>
+                            <div class="muted">From</div>
+                            <input type="date" name="from" value="{{ $from }}">
+                        </div>
+                        <div>
+                            <div class="muted">To</div>
+                            <input type="date" name="to" value="{{ $to }}">
+                        </div>
+                        <button class="btn" type="submit">Filter</button>
+                        <a class="btn2" href="{{ route('petty.credits.index') }}">Reset</a>
+                    </form>
+                </div>
+            </details>
+        </div>
 
         <div class="table-wrap">
         <table>
@@ -57,6 +74,9 @@
                 <th>Amount</th>
                 <th>Batch</th>
                 <th>Description</th>
+                @if($canEditCredit)
+                    <th>Actions</th>
+                @endif
             </tr>
             </thead>
             <tbody>
@@ -69,9 +89,12 @@
                         <a href="{{ route('petty.batches.show', $c->batch_id) }}">{{ $c->batch?->batch_no ?? ('Batch #'.$c->batch_id) }}</a>
                     </td>
                     <td>{{ $c->description }}</td>
+                    @if($canEditCredit)
+                        <td><a href="{{ route('petty.credits.edit', $c->id) }}">Edit</a></td>
+                    @endif
                 </tr>
             @empty
-                <tr><td colspan="5" class="muted">No credits yet.</td></tr>
+                <tr><td colspan="{{ $canEditCredit ? 6 : 5 }}" class="muted">No credits yet.</td></tr>
             @endforelse
             </tbody>
         </table>
