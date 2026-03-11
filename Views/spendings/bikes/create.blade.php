@@ -78,7 +78,7 @@
 
             <div class="pc-field">
                 <label>Mpesa REF</label>
-                <input class="pc-input" name="reference" value="{{ old('reference') }}">
+                <input class="pc-input" name="reference" required value="{{ old('reference') }}">
             </div>
 
             <div class="pc-field">

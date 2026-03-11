@@ -14,6 +14,7 @@ class PettyUser extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'phone_no',
         'password',
         'role',
         'is_active',
@@ -27,6 +28,7 @@ class PettyUser extends Authenticatable
     protected $casts = [
         'is_active' => 'boolean',
         'last_login_at' => 'datetime',
+        'login_sms_sent_at' => 'datetime',
     ];
 
     public function apiTokens()

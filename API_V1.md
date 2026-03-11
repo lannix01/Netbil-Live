@@ -209,6 +209,14 @@ OpenAPI spec file (for Android/client generation):
 
 ## Token Hostel: Hostels
 
+- `GET /tokens/onts`
+  - returns ONT/site directory options used for hostel creation and merge flows
+  - returns:
+    - `data.onts[]` with `key`, `hostel_name`, `site_id`, `router_count_suggestion`
+    - `data.source_count`, `data.fetched_at`
+  - notes:
+    - provider sync failures return `503`
+
 - `GET /tokens/hostels`
   - query:
     - `q` (search name, meter, phone)
@@ -221,11 +229,14 @@ OpenAPI spec file (for Android/client generation):
 
 - `POST /tokens/hostels` (roles: `admin`, `accountant`)
   - body:
-    - `hostel_name` (required)
+    - `hostel_name` (required if `ont_key` omitted)
+    - `ont_key` (optional but recommended, from `GET /tokens/onts`)
     - `meter_no`, `phone_no` (optional)
     - `no_of_routers` (optional integer)
     - `stake` (`monthly` or `semester`)
     - `amount_due` (required numeric)
+  - validation:
+    - hostel name must match a directory ONT/site name when strict ONT validation is enabled
 
 - `GET /tokens/hostels/{hostel}`
   - query: `payments_per_page` (`10`, `20`, `50`, `100`)
@@ -233,6 +244,14 @@ OpenAPI spec file (for Android/client generation):
 
 - `PUT/PATCH /tokens/hostels/{hostel}` (roles: `admin`, `accountant`)
   - same fields as create, all optional (`sometimes`)
+  - if `hostel_name` or `ont_key` is supplied, name is revalidated against ONT directory
+
+- `POST /tokens/hostels/{hostel}/merge-ont` (roles: `admin`, `accountant`)
+  - body:
+    - `ont_key` (required, from `GET /tokens/onts`)
+    - `no_of_routers` (optional override; if omitted, suggested count is used)
+  - purpose:
+    - sync existing hostel name (and optionally router count) from ONT directory
 
 - `DELETE /tokens/hostels/{hostel}` (role: `admin`)
   - blocked with `409` if transactions exist

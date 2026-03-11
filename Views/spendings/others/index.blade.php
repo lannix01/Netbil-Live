@@ -22,6 +22,9 @@
 @endpush
 
 @section('content')
+@php
+    $canEditOther = \App\Modules\PettyCash\Support\PettyAccess::allows(auth('petty')->user(), 'others.edit');
+@endphp
 <div class="wrap">
     <div class="top">
         <div>
@@ -33,37 +36,51 @@
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
             <a class="btn" href="{{ route('petty.others.create') }}">+ New Other</a>
-            <a class="btn2" href="{{ route('petty.others.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'pdf']) }}">PDF</a>
-            <a class="btn2" href="{{ route('petty.others.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'csv']) }}">CSV</a>
-            <a class="btn2" href="{{ route('petty.others.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'excel']) }}">Excel</a>
+            @include('pettycash::partials.export_select', [
+                'options' => [
+                    'PDF' => route('petty.others.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'pdf']),
+                    'CSV' => route('petty.others.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'csv']),
+                    'Excel' => route('petty.others.pdf', ['from'=>$from,'to'=>$to,'batch_id'=>$batchId,'format'=>'excel']),
+                ],
+            ])
         </div>
     </div>
 
     <div class="card">
-        <form method="GET" class="row" action="{{ route('petty.others.index') }}">
-            <div>
-                <div class="muted">From</div>
-                <input type="date" name="from" value="{{ $from }}">
-            </div>
-            <div>
-                <div class="muted">To</div>
-                <input type="date" name="to" value="{{ $to }}">
-            </div>
-            <div>
-                <div class="muted">Batch</div>
-                <select name="batch_id">
-                    <option value="">All</option>
-                    @foreach($batches as $b)
-                        <option value="{{ $b->id }}" @selected((string)$batchId === (string)$b->id)>
-                            {{ $b->batch_no }}
-                        </option>
-                    @endforeach
-                </select>
-            </div>
+        <div class="pc-filter-dock">
+            <details class="pc-filter-panel" @if(filled($from) || filled($to) || filled($batchId)) open @endif>
+                <summary>
+                    <span class="pc-filter-title">Filters</span>
+                    <span class="pc-filter-state">{{ filled($from) || filled($to) || filled($batchId) ? 'active' : 'optional' }}</span>
+                </summary>
+                <div class="pc-filter-body">
+                    <form method="GET" class="row pc-filter-row" action="{{ route('petty.others.index') }}">
+                        <div>
+                            <div class="muted">From</div>
+                            <input type="date" name="from" value="{{ $from }}">
+                        </div>
+                        <div>
+                            <div class="muted">To</div>
+                            <input type="date" name="to" value="{{ $to }}">
+                        </div>
+                        <div>
+                            <div class="muted">Batch</div>
+                            <select name="batch_id">
+                                <option value="">All</option>
+                                @foreach($batches as $b)
+                                    <option value="{{ $b->id }}" @selected((string)$batchId === (string)$b->id)>
+                                        {{ $b->batch_no }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
 
-            <button class="btn" type="submit">Filter</button>
-            <a class="btn2" href="{{ route('petty.others.index') }}">Reset</a>
-        </form>
+                        <button class="btn" type="submit">Filter</button>
+                        <a class="btn2" href="{{ route('petty.others.index') }}">Reset</a>
+                    </form>
+                </div>
+            </details>
+        </div>
 
         <div class="table-wrap">
             <table>
@@ -77,6 +94,9 @@
                     <th class="num">Total</th>
                     <th>Respondent</th>
                     <th>Batch</th>
+                    @if($canEditOther)
+                        <th>Actions</th>
+                    @endif
                 </tr>
                 </thead>
                 <tbody>
@@ -94,9 +114,12 @@
                         <td class="num"><strong>{{ number_format($amt + $fee, 2) }}</strong></td>
                         <td>{{ $o->respondent?->name ?? '-' }}</td>
                         <td>{{ $o->batch?->batch_no ?? ($o->batch_id ?? '-') }}</td>
+                        @if($canEditOther)
+                            <td><a href="{{ route('petty.others.edit', $o->id) }}">Edit</a></td>
+                        @endif
                     </tr>
                 @empty
-                    <tr><td colspan="8" class="muted">No other spendings yet.</td></tr>
+                    <tr><td colspan="{{ $canEditOther ? 9 : 8 }}" class="muted">No other spendings yet.</td></tr>
                 @endforelse
                 </tbody>
             </table>

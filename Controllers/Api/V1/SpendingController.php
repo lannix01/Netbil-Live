@@ -133,7 +133,7 @@ class SpendingController extends Controller
             'bike_id' => ['nullable', 'integer', 'exists:petty_bikes,id'],
             'related_id' => ['nullable', 'integer', 'exists:petty_bikes,id'],
 
-            'reference' => ['nullable', 'string', 'max:255'],
+            'reference' => ['required', 'string', 'max:255'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'transaction_cost' => ['nullable', 'numeric', 'min:0'],
             'date' => ['required', 'date'],
@@ -229,7 +229,7 @@ class SpendingController extends Controller
             'sub_type' => ['sometimes', 'nullable', 'string', 'max:60'],
             'bike_id' => ['sometimes', 'nullable', 'integer', 'exists:petty_bikes,id'],
             'related_id' => ['sometimes', 'nullable', 'integer', 'exists:petty_bikes,id'],
-            'reference' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'reference' => ['sometimes', 'required', 'string', 'max:255'],
             'amount' => ['sometimes', 'required', 'numeric', 'min:0.01'],
             'transaction_cost' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'date' => ['sometimes', 'required', 'date'],
@@ -401,11 +401,19 @@ class SpendingController extends Controller
             ];
         }
 
+        if (trim((string) $reference) === '') {
+            return [
+                'error' => [
+                    'reference' => ['Reference is required when recording payment spendings.'],
+                ],
+            ];
+        }
+
         return [
             'type' => $type,
             'sub_type' => $subType,
             'related_id' => $relatedId,
-            'reference' => $reference,
+            'reference' => trim((string) $reference),
             'amount' => $amount,
             'transaction_cost' => $fee,
             'date' => $date,

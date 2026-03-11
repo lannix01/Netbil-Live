@@ -3,8 +3,7 @@
 Reference for PettyCash API v1 endpoints to share with other developers.
 
 - Production Base URL: `https://netbil.marcepagency.com/api/petty/v1`
-- If integrating from a different environment/system, keep the same path and replace only the host.
-  Example: `https://<your-domain>/api/petty/v1`
+
 - Auth: `Authorization: Bearer <access_token>` for protected endpoints
 - Response envelope: `success`, `message`, `data`, `meta`
 - Write-role note: current backend allows `admin` and `finance` (`accountant` legacy) on most write endpoints unless marked admin-only.

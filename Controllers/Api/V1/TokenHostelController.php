@@ -23,6 +23,7 @@ class TokenHostelController extends Controller
     {
         $q = trim((string) $request->get('q', ''));
         $sortDue = strtolower(trim((string) $request->get('sort_due', '')));
+        $supportsOntSiteColumns = $this->hostelOntColumnsAvailable();
         $perPageOptions = [15, 25, 30, 50, 100];
         $perPage = (int) $request->integer('per_page', 25);
         if (!in_array($perPage, $perPageOptions, true)) {
@@ -53,12 +54,17 @@ class TokenHostelController extends Controller
             })
             ->select('petty_hostels.*', 'lp.last_payment_date')
             ->selectRaw("$dueDateExpr as due_date_sort")
-            ->when($q !== '', function ($qq) use ($q) {
-                $qq->where(function ($w) use ($q) {
+            ->when($q !== '', function ($qq) use ($q, $supportsOntSiteColumns) {
+                $qq->where(function ($w) use ($q, $supportsOntSiteColumns) {
                     $w->where('hostel_name', 'like', "%{$q}%")
                         ->orWhere('contact_person', 'like', "%{$q}%")
                         ->orWhere('meter_no', 'like', "%{$q}%")
                         ->orWhere('phone_no', 'like', "%{$q}%");
+
+                    if ($supportsOntSiteColumns) {
+                        $w->orWhere('ont_site_sn', 'like', "%{$q}%")
+                            ->orWhere('ont_site_id', 'like', "%{$q}%");
+                    }
                 });
             })
             ->when($sortDue === 'asc', function ($qq) {
@@ -140,6 +146,8 @@ class TokenHostelController extends Controller
                 'id' => $h->id,
                 'hostel_name' => $h->hostel_name,
                 'contact_person' => $h->contact_person,
+                'ont_site_id' => $h->ont_site_id,
+                'ont_site_sn' => $h->ont_site_sn,
                 'meter_no' => $h->meter_no,
                 'phone_no' => $h->phone_no,
                 'no_of_routers' => (int) ($h->no_of_routers ?? 0),
@@ -252,7 +260,7 @@ class TokenHostelController extends Controller
             ]);
         }
 
-        $hostel = Hostel::create([
+        $payload = [
             'hostel_name' => $data['hostel_name'],
             'contact_person' => $data['contact_person'] ?? null,
             'meter_no' => $data['meter_no'],
@@ -260,8 +268,16 @@ class TokenHostelController extends Controller
             'no_of_routers' => $this->resolveRoutersInput($data),
             'stake' => $data['stake'],
             'amount_due' => $data['amount_due'],
-            'ont_merged' => (bool) ($candidate !== null),
-        ]);
+        ];
+        if ($this->hostelOntColumnsAvailable()) {
+            $payload['ont_site_id'] = (string) ($candidate['site_id'] ?? '') !== '' ? (string) $candidate['site_id'] : null;
+            $payload['ont_site_sn'] = (string) ($candidate['site_sn'] ?? '') !== '' ? (string) $candidate['site_sn'] : null;
+        }
+        if ($this->hostelOntMergedColumnAvailable()) {
+            $payload['ont_merged'] = (bool) ($candidate !== null);
+        }
+
+        $hostel = Hostel::create($payload);
 
         return $this->successResponse([
             'hostel' => $this->buildHostelSnapshot($hostel),
@@ -289,6 +305,7 @@ class TokenHostelController extends Controller
             ]);
         }
 
+        $candidate = null;
         if (array_key_exists('hostel_name', $data) || array_key_exists('ont_key', $data)) {
             [$candidate, $validationError] = $this->resolveOntCandidate(
                 (string) ($data['hostel_name'] ?? ''),
@@ -302,6 +319,10 @@ class TokenHostelController extends Controller
 
             if ($candidate !== null) {
                 $data['hostel_name'] = (string) ($candidate['hostel_name'] ?? '');
+                if ($this->hostelOntColumnsAvailable()) {
+                    $data['ont_site_id'] = (string) ($candidate['site_id'] ?? '') !== '' ? (string) $candidate['site_id'] : ($hostel->ont_site_id ?? null);
+                    $data['ont_site_sn'] = (string) ($candidate['site_sn'] ?? '') !== '' ? (string) $candidate['site_sn'] : ($hostel->ont_site_sn ?? null);
+                }
             }
         }
 
@@ -324,7 +345,7 @@ class TokenHostelController extends Controller
         unset($data['ont_key']);
 
         $hostel->fill($data);
-        if ($candidate !== null) {
+        if ($candidate !== null && $this->hostelOntMergedColumnAvailable()) {
             $hostel->ont_merged = true;
         }
         $hostel->save();
@@ -358,11 +379,19 @@ class TokenHostelController extends Controller
             ]);
         }
 
-        $hostel->fill([
+        $payload = [
             'hostel_name' => (string) ($candidate['hostel_name'] ?? $hostel->hostel_name),
             'no_of_routers' => $this->resolveRoutersInput($data, (int) ($hostel->no_of_routers ?? 0)),
-            'ont_merged' => true,
-        ]);
+        ];
+        if ($this->hostelOntColumnsAvailable()) {
+            $payload['ont_site_id'] = (string) ($candidate['site_id'] ?? '') !== '' ? (string) $candidate['site_id'] : ($hostel->ont_site_id ?? null);
+            $payload['ont_site_sn'] = (string) ($candidate['site_sn'] ?? '') !== '' ? (string) $candidate['site_sn'] : ($hostel->ont_site_sn ?? null);
+        }
+        if ($this->hostelOntMergedColumnAvailable()) {
+            $payload['ont_merged'] = true;
+        }
+
+        $hostel->fill($payload);
         $hostel->save();
 
         return $this->successResponse([
@@ -371,6 +400,7 @@ class TokenHostelController extends Controller
                 'key' => (string) ($candidate['key'] ?? ''),
                 'hostel_name' => (string) ($candidate['hostel_name'] ?? ''),
                 'site_id' => (string) ($candidate['site_id'] ?? ''),
+                'site_sn' => (string) ($candidate['site_sn'] ?? ''),
                 'router_count_suggestion' => (int) ($candidate['router_count_suggestion'] ?? 0),
             ],
         ], 'Hostel merged from ONT directory.');
@@ -399,6 +429,7 @@ class TokenHostelController extends Controller
                     'key' => (string) ($row['key'] ?? ''),
                     'hostel_name' => (string) ($row['hostel_name'] ?? ''),
                     'site_id' => $row['site_id'] ?? null,
+                    'site_sn' => $row['site_sn'] ?? null,
                     'router_count_suggestion' => (int) ($row['router_count_suggestion'] ?? 0),
                 ];
             })->values(),
@@ -884,6 +915,8 @@ class TokenHostelController extends Controller
             'id' => $hostel->id,
             'hostel_name' => $hostel->hostel_name,
             'contact_person' => $hostel->contact_person,
+            'ont_site_id' => $hostel->ont_site_id,
+            'ont_site_sn' => $hostel->ont_site_sn,
             'meter_no' => $hostel->meter_no,
             'phone_no' => $hostel->phone_no,
             'no_of_routers' => (int) ($hostel->no_of_routers ?? 0),
@@ -905,6 +938,29 @@ class TokenHostelController extends Controller
 
         if ($supports === null) {
             $supports = Schema::hasColumn('petty_payments', 'spending_id');
+        }
+
+        return $supports;
+    }
+
+    private function hostelOntColumnsAvailable(): bool
+    {
+        static $supports = null;
+
+        if ($supports === null) {
+            $supports = Schema::hasColumn('petty_hostels', 'ont_site_id')
+                && Schema::hasColumn('petty_hostels', 'ont_site_sn');
+        }
+
+        return $supports;
+    }
+
+    private function hostelOntMergedColumnAvailable(): bool
+    {
+        static $supports = null;
+
+        if ($supports === null) {
+            $supports = Schema::hasColumn('petty_hostels', 'ont_merged');
         }
 
         return $supports;

@@ -333,27 +333,36 @@
         </div>
     </div>
 
-    <!-- Filter Card -->
-    <div class="filter-card">
-        <form method="GET" action="{{ route('petty.dashboard') }}" class="filter-form">
-            <div class="form-group">
-                <label class="form-label">From</label>
-                <input type="date" name="from" value="{{ request('from') }}" class="form-input">
+    <!-- Compact Filters -->
+    @php $hasDashboardFilter = filled(request('from')) || filled(request('to')); @endphp
+    <div class="pc-filter-dock">
+        <details class="pc-filter-panel" @if($hasDashboardFilter) open @endif>
+            <summary>
+                <span class="pc-filter-title">Filters</span>
+                <span class="pc-filter-state">{{ $hasDashboardFilter ? 'active' : 'optional' }}</span>
+            </summary>
+            <div class="pc-filter-body">
+                <form method="GET" action="{{ route('petty.dashboard') }}" class="filter-form pc-filter-row">
+                    <div class="form-group">
+                        <label class="form-label">From</label>
+                        <input type="date" name="from" value="{{ request('from') }}" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">To</label>
+                        <input type="date" name="to" value="{{ request('to') }}" class="form-input">
+                    </div>
+                    <div>
+                        <button class="btn-primary" type="submit">Filter</button>
+                    </div>
+                    <div>
+                        <a class="btn-secondary" href="{{ route('petty.dashboard') }}">Reset</a>
+                    </div>
+                    <div class="filter-tip">
+                        Tip: You can filter any time range.
+                    </div>
+                </form>
             </div>
-            <div class="form-group">
-                <label class="form-label">To</label>
-                <input type="date" name="to" value="{{ request('to') }}" class="form-input">
-            </div>
-            <div>
-                <button class="btn-primary" type="submit">Filter</button>
-            </div>
-            <div>
-                <a class="btn-secondary" href="{{ route('petty.dashboard') }}">Reset</a>
-            </div>
-            <div class="filter-tip">
-                Tip: You can filter any time range.
-            </div>
-        </form>
+        </details>
     </div>
 
     <!-- Stats Grid -->

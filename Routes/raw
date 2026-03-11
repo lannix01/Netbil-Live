@@ -80,7 +80,10 @@ Route::get('/spendings/tokens/create', [TokenController::class, 'create'])->name
 Route::post('/spendings/tokens/hostels', [TokenController::class, 'storeHostel'])->name('petty.tokens.hostels.store');
 
 Route::get('/spendings/tokens/hostels/{hostel}', [TokenController::class, 'showHostel'])->name('petty.tokens.hostels.show');
+Route::post('/spendings/tokens/hostels/{hostel}/merge-ont', [TokenController::class, 'mergeHostelOnt'])->name('petty.tokens.hostels.merge_ont');
 Route::post('/spendings/tokens/hostels/{hostel}/payments', [TokenController::class, 'storePayment'])->name('petty.tokens.payments.store');
+Route::post('/spendings/tokens/hostels/{hostel}/pending-credits', [TokenController::class, 'storePendingCredit'])->name('petty.tokens.hostels.pending_credits.store');
+Route::post('/spendings/tokens/hostels/{hostel}/pending-credits/{credit}/sort', [TokenController::class, 'sortPendingCredit'])->name('petty.tokens.hostels.pending_credits.sort');
 
 // PDFs
 Route::get('/spendings/tokens/pdf', [TokenController::class, 'pdfHostels'])->name('petty.tokens.pdf');
@@ -295,5 +298,3 @@ MEGAPAY_EMAIL=nichmut43@gmail.com
 MEGAPAY_WEBHOOK_TOKEN=randomstring12345678,.,.@payment
 MEGAPAY_STATUS_POLL_ENABLED=true
 MEGAPAY_BASE_URL=https://megapay.co.ke/backend/v1
-
-

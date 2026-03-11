@@ -11,21 +11,21 @@ class FundsAllocatorService
 {
     public function totalNetBalance(): float
     {
-        $creditedNet = (float) DB::table('petty_credits')
-            ->selectRaw('COALESCE(SUM(amount - COALESCE(transaction_cost,0)),0) as t')
+        $credits = DB::table('petty_credits')
+            ->selectRaw('batch_id, COALESCE(SUM(amount - COALESCE(transaction_cost,0)),0) as credited_net')
+            ->groupBy('batch_id');
+
+        $allocs = DB::table('petty_spending_allocations')
+            ->selectRaw('batch_id, COALESCE(SUM(amount + COALESCE(transaction_cost,0)),0) as spent_net')
+            ->groupBy('batch_id');
+
+        $total = (float) Batch::query()
+            ->leftJoinSub($credits, 'c', fn($j) => $j->on('petty_batches.id', '=', 'c.batch_id'))
+            ->leftJoinSub($allocs, 'a', fn($j) => $j->on('petty_batches.id', '=', 'a.batch_id'))
+            ->selectRaw('COALESCE(SUM(COALESCE(c.credited_net,0) - COALESCE(a.spent_net,0)),0) as t')
             ->value('t');
 
-        // Use spendings table for true cash outflow (covers legacy rows without allocations).
-        $spentNet = (float) DB::table('petty_spendings')
-            ->selectRaw('COALESCE(SUM(amount + COALESCE(transaction_cost,0)),0) as t')
-            ->value('t');
-
-        // Service records are real cash outflows and must reduce available balance.
-        $serviceSpentNet = (float) DB::table('petty_bike_services')
-            ->selectRaw('COALESCE(SUM(amount + COALESCE(transaction_cost,0)),0) as t')
-            ->value('t');
-
-        return round($creditedNet - $spentNet - $serviceSpentNet, 2);
+        return round($total, 2);
     }
 
     /**
@@ -66,7 +66,9 @@ class FundsAllocatorService
 
         return DB::transaction(function () use ($spending, $amount, $fee, $onlyBatchId) {
             $requiredTotal = round($amount + $fee, 2);
-            $availableTotal = $this->totalNetBalance();
+            $batches = $this->batchesWithNetAvailable($onlyBatchId);
+            $availableTotal = round((float) $batches->sum(fn ($b) => (float) $b->available_balance), 2);
+
             if ($requiredTotal > $availableTotal) {
                 throw new \RuntimeException(
                     'Insufficient TOTAL balance. Needed: '
@@ -75,8 +77,6 @@ class FundsAllocatorService
                     . number_format($availableTotal, 2)
                 );
             }
-
-            $batches = $this->batchesWithNetAvailable($onlyBatchId);
 
             $needPrincipal = $amount;
             $needFee = $fee;

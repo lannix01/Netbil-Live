@@ -63,7 +63,7 @@ class OtherController extends Controller
             'funding' => ['required', 'in:auto,single'],
             'batch_id' => ['nullable', 'integer', 'exists:petty_batches,id'],
 
-            'reference' => ['nullable', 'string', 'max:255'],
+            'reference' => ['required', 'string', 'max:255'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'transaction_cost' => ['nullable', 'numeric', 'min:0'],
             'date' => ['required', 'date'],
@@ -95,7 +95,7 @@ class OtherController extends Controller
                     'batch_id' => null,
                     'type' => 'other',
                     'sub_type' => null,
-                    'reference' => $data['reference'] ?? null,
+                    'reference' => $data['reference'],
                     'amount' => $amount,
                     'transaction_cost' => $fee,
                     'date' => $data['date'],

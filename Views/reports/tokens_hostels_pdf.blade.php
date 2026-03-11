@@ -19,6 +19,8 @@
         <thead>
         <tr>
             <th>Hostel</th>
+            <th>Site S.N</th>
+            <th>Contact Person</th>
             <th>Meter</th>
             <th>Phone</th>
             <th>Routers</th>
@@ -31,6 +33,8 @@
         @foreach($hostels as $h)
             <tr>
                 <td>{{ $h->hostel_name }}</td>
+                <td>{{ $h->ont_site_sn ?: '-' }}</td>
+                <td>{{ $h->contact_person ?? '-' }}</td>
                 <td>{{ $h->meter_no }}</td>
                 <td>{{ $h->phone_no }}</td>
                 <td>{{ $h->no_of_routers }}</td>
