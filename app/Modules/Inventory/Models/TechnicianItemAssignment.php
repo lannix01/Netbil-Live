@@ -26,12 +26,12 @@ class TechnicianItemAssignment extends Model
 
     public function technician(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'technician_id');
+        return $this->belongsTo(InventoryUser::class, 'technician_id');
     }
 
     public function assigner(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'assigned_by');
+        return $this->belongsTo(InventoryUser::class, 'assigned_by');
     }
 
     public function item(): BelongsTo

@@ -95,10 +95,12 @@ Route::prefix('petty/v1')->middleware('petty.api.meta')->group(function () {
         Route::post('/notifications/{notification}/read', [PettyApiNotificationController::class, 'markRead']);
 
         Route::get('/tokens/batches/available', [PettyApiTokenHostelController::class, 'availableBatches']);
+        Route::get('/tokens/onts', [PettyApiTokenHostelController::class, 'ontCatalog']);
         Route::get('/tokens/hostels', [PettyApiTokenHostelController::class, 'index']);
         Route::post('/tokens/hostels', [PettyApiTokenHostelController::class, 'storeHostel']);
         Route::get('/tokens/hostels/{hostel}', [PettyApiTokenHostelController::class, 'show']);
         Route::match(['put', 'patch'], '/tokens/hostels/{hostel}', [PettyApiTokenHostelController::class, 'updateHostel']);
+        Route::post('/tokens/hostels/{hostel}/merge-ont', [PettyApiTokenHostelController::class, 'mergeHostelOnt']);
         Route::delete('/tokens/hostels/{hostel}', [PettyApiTokenHostelController::class, 'destroyHostel']);
         Route::post('/tokens/hostels/{hostel}/payments', [PettyApiTokenHostelController::class, 'storePayment']);
         Route::match(['put', 'patch'], '/tokens/payments/{payment}', [PettyApiTokenHostelController::class, 'updatePayment']);

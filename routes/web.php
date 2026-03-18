@@ -37,7 +37,7 @@ use App\Http\Controllers\{
 */
 
 Route::get('/', function () {
-    return view('welcome');
+    return view('modules');
 });
 
 Route::get('/payments', [PaymentController::class, 'index'])->name('payments.index');

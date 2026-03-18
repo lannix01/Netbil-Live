@@ -120,6 +120,12 @@
     $agreementActionLabel = $agreementConfigured ? 'Update Agreement' : 'Set Agreement';
     $isPackageAgreement = $agreementType === 'package';
     $isTokenAgreement = $agreementType === 'token';
+    $supportsOverpay = (bool) ($supportsOverpay ?? false);
+    $overpayCandidates = collect($overpayCandidates ?? []);
+    $terminationSupported = (bool) ($terminationSupported ?? false);
+    $agreementTerminated = (bool) ($agreementTerminated ?? false);
+    $transferTargets = collect($transferTargets ?? []);
+    $transferHostel = $transferHostel ?? null;
     $ontHostels = (array) ($ontCatalog['hostels'] ?? []);
     $ontAvailable = (bool) ($ontCatalog['available'] ?? false);
     $ontMessage = (string) ($ontCatalog['message'] ?? '');
@@ -129,7 +135,9 @@
         'hostel_edit' => 'hostel-edit',
         'hostel_merge' => 'hostel-merge',
         'record_payment' => 'payment-record',
-        default => in_array($modalRequest, ['hostel-edit', 'hostel-merge', 'payment-record'], true) ? $modalRequest : '',
+        'overpay_mark' => 'overpay-mark',
+        'agreement_terminate' => 'agreement-terminate',
+        default => in_array($modalRequest, ['hostel-edit', 'hostel-merge', 'payment-record', 'overpay-mark', 'agreement-terminate'], true) ? $modalRequest : '',
     };
     $pendingCredits = collect($pendingCredits ?? []);
     $pendingCreditOpen = $pendingCredits->filter(fn ($row) => strtolower((string) ($row->status ?? 'pending')) === 'pending')->values();
@@ -147,6 +155,9 @@
             </div>
             <div class="muted">
                 Agreement: <span class="pill">{{ $agreementTypeLabel }}</span>
+                @if($agreementTerminated)
+                    <span class="pill" style="background:#fef3f2;color:#b42318;border:1px solid #fecdca">Terminated</span>
+                @endif
                 Meter: <span class="pill">{{ $hostel->meter_no ?? '-' }}</span>
                 Site S.N: <span class="pill">{{ $hostel->ont_site_sn ?? '-' }}</span>
                 Contact: <span class="pill">{{ $hostel->contact_person ?? '-' }}</span>
@@ -163,33 +174,47 @@
                     <span class="pill">{{ $lastPayment['date'] }}</span>
                 </div>
             @endif
+            @if($agreementTerminated)
+                <div class="muted" style="margin-top:6px">
+                    Termination reason: <strong>{{ strtoupper(str_replace('_', ' ', (string) ($hostel->agreement_termination_reason ?? ''))) }}</strong>
+                    @if($transferHostel)
+                        • Transferred to: <strong>{{ $transferHostel->hostel_name }}</strong>
+                    @endif
+                </div>
+            @endif
         </div>
         <div class="action-row">
             <a class="btn2" href="{{ route('petty.tokens.index') }}">Back</a>
-            @include('pettycash::partials.export_select', [
-                'options' => [
-                    'PDF' => route('petty.tokens.hostels.pdf', ['hostel' => $hostel->id, 'format' => 'pdf']),
-                    'CSV' => route('petty.tokens.hostels.pdf', ['hostel' => $hostel->id, 'format' => 'csv']),
-                    'Excel' => route('petty.tokens.hostels.pdf', ['hostel' => $hostel->id, 'format' => 'excel']),
-                ],
-            ])
-            @if($canEditHostel)
-                <details class="action-menu">
-                    <summary class="btn2">Management ▾</summary>
-                    <div class="action-menu-list">
+            <details class="action-menu">
+                <summary class="btn2">Management ▾</summary>
+                <div class="action-menu-list">
+                    <a class="action-menu-item" href="{{ route('petty.tokens.hostels.pdf', ['hostel' => $hostel->id, 'format' => 'pdf']) }}">Export PDF</a>
+                    <a class="action-menu-item" href="{{ route('petty.tokens.hostels.pdf', ['hostel' => $hostel->id, 'format' => 'csv']) }}">Export CSV</a>
+                    <a class="action-menu-item" href="{{ route('petty.tokens.hostels.pdf', ['hostel' => $hostel->id, 'format' => 'excel']) }}">Export Excel</a>
+                    @if($canRecordPayment)
+                        <button class="action-menu-item" type="button" data-modal-target="payment-record">Record Payment</button>
+                    @endif
+                    @if($canRecordPayment && $supportsOverpay && !$isPackageAgreement)
+                        <button class="action-menu-item" type="button" data-modal-target="overpay-mark" @disabled($overpayCandidates->isEmpty())>Mark Overpay</button>
+                    @endif
+                    @if($canEditHostel)
                         <a class="action-menu-item" href="{{ route('petty.tokens.hostels.agreement', $hostel->id) }}">{{ $agreementActionLabel }}</a>
+                        @if($terminationSupported)
+                            @if(!$agreementTerminated)
+                                <button class="action-menu-item" type="button" data-modal-target="agreement-terminate">Terminate Agreement</button>
+                            @else
+                                <span class="action-menu-item is-disabled" aria-disabled="true">Agreement Terminated</span>
+                            @endif
+                        @endif
                         <button class="action-menu-item" type="button" data-modal-target="hostel-edit">Edit Hostel Details</button>
                         @if((bool) ($hostel->ont_merged ?? false))
                             <span class="action-menu-item is-disabled" aria-disabled="true">Merged</span>
                         @else
                             <button class="action-menu-item" type="button" data-modal-target="hostel-merge">Merge/Update from ONT</button>
                         @endif
-                    </div>
-                </details>
-            @endif
-            @if($canRecordPayment)
-                <button class="btn" type="button" data-modal-target="payment-record">Record Payment</button>
-            @endif
+                    @endif
+                </div>
+            </details>
         </div>
     </div>
 
@@ -387,15 +412,40 @@
                         @php
                             $fee = (float)($p->transaction_cost ?? 0);
                             $amt = (float)$p->amount;
+                            $isOverpayRow = $supportsOverpay && (bool) ($p->is_overpay_application ?? false);
+                            $overpaySourceRef = trim((string) ($p->overpaySource?->reference ?? ''));
+                            $overpaySourceDate = $p->overpaySource?->date?->format('Y-m-d');
                         @endphp
                         <tr>
                             <td>{{ $p->date?->format('Y-m-d') }}</td>
-                            <td>{{ $p->reference }}</td>
+                            <td>
+                                {{ $p->reference }}
+                                @if($isOverpayRow)
+                                    <div class="muted" style="margin-top:4px">
+                                        <span class="pill" style="background:#ecfdf3;color:#027a48;border:1px solid #abefc6">Overpay Applied</span>
+                                    </div>
+                                @endif
+                            </td>
                             <td>{{ number_format($amt, 2) }}</td>
                             <td>{{ number_format($fee, 2) }}</td>
                             <td><strong>{{ number_format($amt + $fee, 2) }}</strong></td>
                             <td>{{ $p->receiver_name }} {{ $p->receiver_phone ? '('.$p->receiver_phone.')' : '' }}</td>
-                            <td>{{ $p->notes }}</td>
+                            <td>
+                                @if($isOverpayRow)
+                                    <div class="muted" style="margin-bottom:4px">
+                                        Source:
+                                        @if($overpaySourceRef !== '')
+                                            {{ $overpaySourceRef }}
+                                        @else
+                                            Payment #{{ (int) ($p->overpay_source_payment_id ?? 0) }}
+                                        @endif
+                                        @if($overpaySourceDate)
+                                            ({{ $overpaySourceDate }})
+                                        @endif
+                                    </div>
+                                @endif
+                                {{ $p->notes }}
+                            </td>
                             @if($canEditPayment)
                                 <td><a href="{{ route('petty.tokens.payments.edit', $p->id) }}">Edit</a></td>
                             @endif
@@ -602,7 +652,162 @@
         </div>
     @endif
 
+    @if($canEditHostel && $terminationSupported)
+        <div class="pc-modal" data-modal="agreement-terminate" aria-hidden="true">
+            <div class="pc-modal-panel" role="dialog" aria-modal="true" aria-label="Terminate agreement">
+                <div class="pc-modal-head">
+                    <h3 style="margin:0">Terminate Agreement</h3>
+                    <button type="button" class="pc-close" data-modal-close>Close</button>
+                </div>
+                <div class="pc-modal-body">
+                    @if($errors->any() && old('form_context') === 'agreement_terminate')
+                        <div class="err" style="margin-top:0">@foreach($errors->all() as $e)<div>{{ $e }}</div>@endforeach</div>
+                    @endif
+
+                    <form class="pc-form" method="POST" action="{{ route('petty.tokens.hostels.agreement.terminate', $hostel->id) }}">
+                        @csrf
+                        <input type="hidden" name="form_context" value="agreement_terminate">
+
+                        <div class="pc-field full">
+                            <label>Reason (required)</label>
+                            <select class="pc-select" name="termination_reason" id="agreementTerminateReason" required>
+                                <option value="">Select reason</option>
+                                <option value="transfer_agreement" @selected(old('termination_reason') === 'transfer_agreement')>Transfer agreement</option>
+                                <option value="closed" @selected(old('termination_reason') === 'closed')>Closed / Not active</option>
+                                <option value="moved" @selected(old('termination_reason') === 'moved')>Moved / Relocated</option>
+                                <option value="other" @selected(old('termination_reason') === 'other')>Other</option>
+                            </select>
+                            <div class="pc-help">Termination is permanent until a new agreement is set.</div>
+                        </div>
+
+                        <div class="pc-field full" id="agreementTransferWrap" style="display:none;">
+                            <label>Transfer To Hostel / Payment Channel</label>
+                            <select class="pc-select" name="transfer_hostel_id" id="agreementTransferHostel">
+                                <option value="">Select hostel</option>
+                                @foreach($transferTargets as $target)
+                                    <option value="{{ $target->id }}" @selected((string) old('transfer_hostel_id') === (string) $target->id)>
+                                        {{ $target->hostel_name }} @if($target->meter_no || $target->phone_no) ({{ $target->meter_no ?: '-' }} / {{ $target->phone_no ?: '-' }}) @endif
+                                    </option>
+                                @endforeach
+                            </select>
+                            <div class="pc-help">Required when reason is transfer agreement.</div>
+                        </div>
+
+                        <div class="pc-field full">
+                            <label>Notes (optional)</label>
+                            <input class="pc-input" name="termination_notes" value="{{ old('termination_notes') }}" placeholder="Context for this termination">
+                        </div>
+
+                        <div class="pc-actions">
+                            <button class="btn" type="submit">Terminate Agreement</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    @endif
+
     @if($canRecordPayment)
+        @if($supportsOverpay && !$isPackageAgreement)
+            <div class="pc-modal" data-modal="overpay-mark" aria-hidden="true">
+                <div class="pc-modal-panel" role="dialog" aria-modal="true" aria-label="Mark overpay">
+                    <div class="pc-modal-head">
+                        <h3 style="margin:0">Mark Overpay</h3>
+                        <button type="button" class="pc-close" data-modal-close>Close</button>
+                    </div>
+                    <div class="pc-modal-body">
+                        @if($errors->any() && old('form_context') === 'overpay_mark')
+                            <div class="err" style="margin-top:0">@foreach($errors->all() as $e)<div>{{ $e }}</div>@endforeach</div>
+                        @endif
+
+                        <form class="pc-form" method="POST" action="{{ route('petty.tokens.hostels.overpay.apply', $hostel->id) }}">
+                            @csrf
+                            <input type="hidden" name="form_context" value="overpay_mark">
+
+                            <div class="pc-field full">
+                                <label>Select Overpay Source Record</label>
+                                <select class="pc-select" name="source_payment_id" id="overpaySourcePayment" required @disabled($overpayCandidates->isEmpty())>
+                                    <option value="">Choose payment record</option>
+                                    @foreach($overpayCandidates as $candidate)
+                                        @php
+                                            $candidateAmount = (float) ($candidate->amount ?? 0);
+                                            $candidateDateValue = optional($candidate->date)->format('Y-m-d') ?: '';
+                                            $candidateDate = $candidateDateValue !== '' ? $candidateDateValue : '-';
+                                            $candidateRef = (string) ($candidate->reference ?? ('Payment #' . $candidate->id));
+                                        @endphp
+                                        <option
+                                            value="{{ $candidate->id }}"
+                                            @selected((string) old('source_payment_id') === (string) $candidate->id)
+                                        >
+                                            {{ $candidateDate }} • {{ $candidateRef }} • {{ number_format($candidateAmount, 2) }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                <div class="pc-help">Creates a non-deducting payment entry using the selected source record.</div>
+                            </div>
+
+                            <div class="pc-field">
+                                <label>Marked Date</label>
+                                <input
+                                    class="pc-input"
+                                    type="date"
+                                    name="marked_date"
+                                    id="overpayMarkedDate"
+                                    required
+                                    value="{{ old('marked_date', optional($today)->format('Y-m-d') ?: date('Y-m-d')) }}"
+                                >
+                                <div class="pc-help">Default mode starts a new cycle from this date (one month from today if marked today).</div>
+                            </div>
+
+                            <div class="pc-field">
+                                <label>Date Handling</label>
+                                <select class="pc-select" name="date_mode" id="overpayDateMode">
+                                    <option value="from_marked_date" @selected(old('date_mode', 'from_marked_date') === 'from_marked_date')>
+                                        Reset from marked date (Default)
+                                    </option>
+                                    <option value="next_billing_date" @selected(old('date_mode') === 'next_billing_date')>
+                                        Choose next billing date
+                                    </option>
+                                </select>
+                                <div class="pc-help">Switch to next billing date only when you need a custom due date.</div>
+                            </div>
+
+                            <div class="pc-field full" id="overpayNextBillingWrap" style="display:none;">
+                                <label>Next Billing Date</label>
+                                <input
+                                    class="pc-input"
+                                    type="date"
+                                    name="next_billing_date"
+                                    id="overpayNextBillingDate"
+                                    value="{{ old('next_billing_date') }}"
+                                >
+                                <div class="pc-help">Used only when date handling is set to "Choose next billing date".</div>
+                            </div>
+
+                            <div class="pc-field full">
+                                <div class="pc-help" id="overpayNextDuePreview">Next due will be: YYYY-MM-DD</div>
+                            </div>
+
+                            <div class="pc-field full">
+                                <label>Notes (optional)</label>
+                                <input class="pc-input" name="notes" value="{{ old('notes') }}" placeholder="Context for this overpay adjustment">
+                            </div>
+
+                            @if($overpayCandidates->isEmpty())
+                                <div class="ont-sync-note error">
+                                    No eligible overpay source records found. Record payments first, then apply overpay from one unused record.
+                                </div>
+                            @endif
+
+                            <div class="pc-actions">
+                                <button class="btn" type="submit" @disabled($overpayCandidates->isEmpty())>Apply Overpay (No Deduction)</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        @endif
+
         <div class="pc-modal" data-modal="payment-record" aria-hidden="true">
             <div class="pc-modal-panel" role="dialog" aria-modal="true" aria-label="Record payment">
                 <div class="pc-modal-head">
@@ -680,12 +885,12 @@
 
                         <div class="pc-field">
                             <label>Receiver Name (optional)</label>
-                            <input class="pc-input" name="receiver_name" value="{{ old('receiver_name') }}">
+                            <input class="pc-input" name="receiver_name" value="{{ old('receiver_name', $hostel->contact_person) }}">
                         </div>
 
                         <div class="pc-field">
                             <label>Receiver Phone</label>
-                            <input class="pc-input" name="receiver_phone" @if(!$isPackageAgreement) required @endif value="{{ old('receiver_phone') }}">
+                            <input class="pc-input" name="receiver_phone" @if(!$isPackageAgreement) required @endif value="{{ old('receiver_phone', $hostel->phone_no) }}">
                         </div>
 
                         <div class="pc-field full">
@@ -713,6 +918,15 @@
     const funding = document.getElementById('fundingModal');
     const batchWrap = document.getElementById('batchWrapModal');
     const batchSel = document.getElementById('batchIdModal');
+    const overpayMarkedDate = document.getElementById('overpayMarkedDate');
+    const overpayDateMode = document.getElementById('overpayDateMode');
+    const overpayNextBillingWrap = document.getElementById('overpayNextBillingWrap');
+    const overpayNextBillingDate = document.getElementById('overpayNextBillingDate');
+    const overpayNextDuePreview = document.getElementById('overpayNextDuePreview');
+    const overpayCycleMonths = @json((($hostel->stake ?: 'monthly') === 'semester') ? 4 : 1);
+    const agreementTerminateReason = document.getElementById('agreementTerminateReason');
+    const agreementTransferWrap = document.getElementById('agreementTransferWrap');
+    const agreementTransferHostel = document.getElementById('agreementTransferHostel');
 
     function getModal(id){
         return document.querySelector('[data-modal="' + id + '"]');
@@ -762,6 +976,79 @@
         const isSingle = funding.value === 'single';
         batchWrap.style.display = isSingle ? 'block' : 'none';
         if (!isSingle && batchSel) batchSel.value = '';
+    }
+
+    function parseIsoDate(value){
+        const raw = String(value || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+        const [year, month, day] = raw.split('-').map((item) => Number(item));
+        const date = new Date(Date.UTC(year, month - 1, day));
+        if (
+            date.getUTCFullYear() !== year
+            || date.getUTCMonth() !== (month - 1)
+            || date.getUTCDate() !== day
+        ) {
+            return null;
+        }
+        return date;
+    }
+
+    function formatIsoDate(date){
+        if (!date) return '';
+        const year = date.getUTCFullYear();
+        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(date.getUTCDate()).padStart(2, '0');
+        return year + '-' + month + '-' + day;
+    }
+
+    function addMonthsNoOverflow(baseDate, months){
+        if (!baseDate) return null;
+        const day = baseDate.getUTCDate();
+        const targetStart = new Date(Date.UTC(
+            baseDate.getUTCFullYear(),
+            baseDate.getUTCMonth() + Number(months || 0),
+            1
+        ));
+        const targetYear = targetStart.getUTCFullYear();
+        const targetMonth = targetStart.getUTCMonth();
+        const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+        return new Date(Date.UTC(targetYear, targetMonth, Math.min(day, lastDay)));
+    }
+
+    function syncOverpayPreview(){
+        if (!overpayNextDuePreview) return;
+        const mode = overpayDateMode ? String(overpayDateMode.value || 'from_marked_date') : 'from_marked_date';
+        let nextDue = null;
+
+        if (mode === 'next_billing_date') {
+            nextDue = parseIsoDate(overpayNextBillingDate ? overpayNextBillingDate.value : '');
+        } else {
+            const markedDate = parseIsoDate(overpayMarkedDate ? overpayMarkedDate.value : '');
+            nextDue = addMonthsNoOverflow(markedDate, overpayCycleMonths);
+        }
+
+        overpayNextDuePreview.textContent = 'Next due will be: ' + (nextDue ? formatIsoDate(nextDue) : 'YYYY-MM-DD');
+    }
+
+    function syncOverpayNextBillingMin(){
+        if (!overpayMarkedDate || !overpayNextBillingDate) return;
+        overpayNextBillingDate.min = String(overpayMarkedDate.value || '');
+    }
+
+    function syncOverpayDateMode(){
+        if (!overpayDateMode || !overpayNextBillingWrap || !overpayNextBillingDate) return;
+        syncOverpayNextBillingMin();
+        const isNextBilling = overpayDateMode.value === 'next_billing_date';
+        overpayNextBillingWrap.style.display = isNextBilling ? 'block' : 'none';
+        overpayNextBillingDate.required = isNextBilling;
+        syncOverpayPreview();
+    }
+
+    function syncAgreementTermination(){
+        if (!agreementTerminateReason || !agreementTransferWrap || !agreementTransferHostel) return;
+        const isTransfer = agreementTerminateReason.value === 'transfer_agreement';
+        agreementTransferWrap.style.display = isTransfer ? 'block' : 'none';
+        agreementTransferHostel.required = isTransfer;
     }
 
     function setupOntPicker(prefix){
@@ -1008,6 +1295,28 @@
 
     if (funding) funding.addEventListener('change', syncFunding);
     syncFunding();
+
+    if (overpayMarkedDate) {
+        overpayMarkedDate.addEventListener('change', syncOverpayNextBillingMin);
+        overpayMarkedDate.addEventListener('change', syncOverpayPreview);
+        syncOverpayNextBillingMin();
+    }
+
+    if (overpayNextBillingDate) {
+        overpayNextBillingDate.addEventListener('change', syncOverpayPreview);
+    }
+
+    if (overpayDateMode) {
+        overpayDateMode.addEventListener('change', syncOverpayDateMode);
+        syncOverpayDateMode();
+    }
+
+    if (agreementTerminateReason) {
+        agreementTerminateReason.addEventListener('change', syncAgreementTermination);
+        syncAgreementTermination();
+    }
+
+    syncOverpayPreview();
 
     setupOntPicker('edit');
     setupOntPicker('merge');

@@ -5,6 +5,9 @@
     <title>NetBil System</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('favicon.png') }}">
+    <link rel="shortcut icon" href="{{ asset('favicon.png') }}">
+    <link rel="apple-touch-icon" href="{{ asset('assets/images/logo.png') }}">
 
     <!-- Bootstrap -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -219,6 +222,8 @@ body.no-scroll {
     box-shadow: 0 0 0 2px #0d6efd22;
 }
 </style>
+
+@include('partials.back_iconize')
 
 </body>
 </html>

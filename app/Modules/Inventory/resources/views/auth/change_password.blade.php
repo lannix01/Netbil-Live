@@ -3,146 +3,203 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Change Password</title>
-    <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+    <title>Skybrix Inventory | Change Password</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <style>
-        body { 
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        :root{
+            --ink: #142016;
+            --muted: #6b7f71;
+            --paper: rgba(255,255,255,.96);
+            --paper-soft: #f4f9f2;
+            --canvas: #eff5ec;
+            --line: rgba(87,109,91,.14);
+            --line-strong: rgba(87,109,91,.24);
+            --brand: #4d8a66;
+            --brand-strong: #2f6947;
+            --shadow: 0 28px 80px rgba(28,46,34,.12);
+        }
+        *{ box-sizing: border-box; }
+        body{
+            margin: 0;
             min-height: 100vh;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            display: grid;
+            place-items: center;
+            padding: 20px;
+            font-family: "IBM Plex Sans", sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(77,138,102,.14), transparent 22%),
+                radial-gradient(circle at top right, rgba(112,121,111,.10), transparent 20%),
+                linear-gradient(180deg, #f7fbf4 0%, var(--canvas) 100%);
         }
-        
-        .container {
-            max-width: 480px;
-            margin: 0 auto;
-            padding: 2rem 1rem;
+        .pass-card{
+            width: min(100%, 480px);
+            padding: 30px;
+            border-radius: 32px;
+            border: 1px solid var(--line);
+            background: linear-gradient(180deg, rgba(255,255,255,.98) 0%, rgba(247,251,245,.98) 100%);
+            box-shadow: var(--shadow);
         }
-        
-        .card { 
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            border: none;
+        .pass-kicker{
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: .18em;
+            text-transform: uppercase;
+            color: var(--muted);
         }
-        
-        .card-body {
-            padding: 2.5rem;
+        .pass-title{
+            margin: 10px 0 0;
+            font-family: "Space Grotesk", sans-serif;
+            font-size: 34px;
+            line-height: .98;
+            letter-spacing: -.05em;
         }
-        
-        h4 {
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: #1e293b;
-            margin-bottom: 0.5rem;
+        .pass-copy{
+            margin-top: 12px;
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.6;
         }
-        
-        .text-muted {
-            color: #64748b;
-            font-size: 0.875rem;
-            margin-bottom: 2rem;
+        .pass-errors{
+            margin-top: 20px;
+            padding: 14px 16px;
+            border-radius: 18px;
+            border: 1px solid var(--line-strong);
+            background: linear-gradient(180deg, #ffffff 0%, #f7fbf5 100%);
+            font-size: 14px;
+            line-height: 1.55;
         }
-        
-        .form-label {
+        .pass-errors ul{
+            margin: 8px 0 0 18px;
+            padding: 0;
+        }
+        .pass-form{
+            margin-top: 22px;
+            display: grid;
+            gap: 16px;
+        }
+        .pass-field{
+            padding: 14px;
+            border-radius: 22px;
+            border: 1px solid var(--line);
+            background: linear-gradient(180deg, #ffffff 0%, var(--paper-soft) 100%);
+        }
+        .pass-label{
             display: block;
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: #334155;
-            margin-bottom: 0.5rem;
+            margin-bottom: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .12em;
+            color: var(--muted);
         }
-        
-        .form-control {
+        .pass-input{
             width: 100%;
-            padding: 0.625rem 0.875rem;
-            font-size: 0.9375rem;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            transition: all 0.15s ease;
-            box-sizing: border-box;
-        }
-        
-        .form-control:focus {
+            min-height: 50px;
+            border-radius: 18px;
+            border: 1px solid var(--line-strong);
+            background: #ffffff;
+            padding: .82rem .95rem;
+            font-size: 15px;
             outline: none;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            transition: .18s ease;
         }
-        
-        .mb-3 {
-            margin-bottom: 1.25rem;
+        .pass-input:focus{
+            border-color: rgba(77,138,102,.42);
+            box-shadow: 0 0 0 .16rem rgba(77,138,102,.10);
         }
-        
-        .btn {
+        .pass-actions{
+            display: grid;
+            gap: 10px;
+            margin-top: 6px;
+        }
+        .pass-btn{
             width: 100%;
-            padding: 0.75rem 1rem;
-            font-size: 0.9375rem;
-            font-weight: 500;
-            border-radius: 8px;
-            border: none;
+            min-height: 52px;
+            border-radius: 999px;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: .02em;
             cursor: pointer;
-            transition: all 0.15s ease;
+            transition: .18s ease;
         }
-        
-        .btn-dark {
-            background: #1e293b;
-            color: white;
+        .pass-btn-primary{
+            border: 0;
+            background: linear-gradient(180deg, var(--brand) 0%, var(--brand-strong) 100%);
+            color: #ffffff;
+            box-shadow: 0 18px 28px rgba(77,138,102,.18);
         }
-        
-        .btn-dark:hover {
-            background: #0f172a;
+        .pass-btn-primary:hover{
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 22px 34px rgba(77,138,102,.22);
         }
-        
-        .btn-outline-secondary {
-            background: transparent;
-            color: #64748b;
-            border: 1px solid #e2e8f0;
+        .pass-btn-secondary{
+            border: 1px solid var(--line-strong);
+            background: #ffffff;
+            color: var(--ink);
         }
-        
-        .btn-outline-secondary:hover {
-            background: #f8fafc;
-            border-color: #cbd5e1;
-            color: #475569;
+        .pass-btn-secondary:hover{
+            border-color: rgba(77,138,102,.32);
+            background: #f8fbf6;
         }
-        
-        .mt-3 {
-            margin-top: 1rem;
-        }
-        
-        @media (max-width: 640px) {
-            .card-body {
-                padding: 2rem 1.5rem;
+        @media (max-width: 575.98px){
+            body{ padding: 14px; }
+            .pass-card{
+                padding: 22px;
+                border-radius: 28px;
+            }
+            .pass-title{
+                font-size: 28px;
             }
         }
     </style>
 </head>
 <body>
-<div class="container">
-    <div class="card">
-        <div class="card-body">
-            <h4>Change Password</h4>
-            <p class="text-muted">Default password must be changed to continue.</p>
-            <form method="POST" action="{{ route('inventory.auth.password.update') }}">
-                @csrf
-                <div class="mb-3">
-                    <label class="form-label">Current Password</label>
-                    <input class="form-control" type="password" name="current_password" required>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">New Password</label>
-                    <input class="form-control" type="password" name="password" required>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Confirm New Password</label>
-                    <input class="form-control" type="password" name="password_confirmation" required>
-                </div>
-                <button class="btn btn-dark">Update Password</button>
-            </form>
-            <form class="mt-3" method="POST" action="{{ route('inventory.auth.logout') }}">
-                @csrf
-                <button class="btn btn-outline-secondary">Logout</button>
-            </form>
-        </div>
-    </div>
-</div>
+    <section class="pass-card">
+        <div class="pass-kicker">Password Update</div>
+        <h1 class="pass-title">Change password.</h1>
+        <p class="pass-copy">Set a new password to continue.</p>
+
+        @if ($errors->any())
+            <div class="pass-errors">
+                <strong>Fix the following:</strong>
+                <ul>
+                    @foreach($errors->all() as $error)
+                        <li>{{ $error }}</li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif
+
+        <form method="POST" action="{{ route('inventory.auth.password.update') }}" class="pass-form">
+            @csrf
+
+            <div class="pass-field">
+                <label class="pass-label">Current Password</label>
+                <input class="pass-input" type="password" name="current_password" required>
+            </div>
+
+            <div class="pass-field">
+                <label class="pass-label">New Password</label>
+                <input class="pass-input" type="password" name="password" required>
+            </div>
+
+            <div class="pass-field">
+                <label class="pass-label">Confirm New Password</label>
+                <input class="pass-input" type="password" name="password_confirmation" required>
+            </div>
+
+            <div class="pass-actions">
+                <button class="pass-btn pass-btn-primary">Update Password</button>
+            </div>
+        </form>
+
+        <form method="POST" action="{{ route('inventory.auth.logout') }}" class="pass-actions" style="margin-top: 12px;">
+            @csrf
+            <button class="pass-btn pass-btn-secondary">Logout</button>
+        </form>
+    </section>
 </body>
 </html>

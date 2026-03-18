@@ -22,7 +22,7 @@ class ItemDeployment extends Model
 
     public function technician(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'technician_id');
+        return $this->belongsTo(InventoryUser::class, 'technician_id');
     }
 
     public function item(): BelongsTo
@@ -32,6 +32,6 @@ class ItemDeployment extends Model
 
     public function creator(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'created_by');
+        return $this->belongsTo(InventoryUser::class, 'created_by');
     }
 }

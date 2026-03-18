@@ -23,7 +23,18 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        if (app()->environment('production')) {
+        $request = request();
+        $forwardedProto = strtolower(trim((string) $request->headers->get('x-forwarded-proto', '')));
+        $cfVisitor = strtolower((string) $request->headers->get('cf-visitor', ''));
+        $appUrl = strtolower(trim((string) config('app.url', '')));
+
+        $shouldForceHttps = app()->environment('production')
+            || $request->isSecure()
+            || $forwardedProto === 'https'
+            || str_contains($cfVisitor, '"scheme":"https"')
+            || str_starts_with($appUrl, 'https://');
+
+        if ($shouldForceHttps) {
             URL::forceScheme('https');
         }
 

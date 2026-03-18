@@ -139,12 +139,12 @@
                 <input class="pc-input" id="noOfRoutersInput" type="number" min="0" name="no_of_routers" value="{{ old('no_of_routers', 0) }}">
             </div>
 
-            <div class="pc-field full">
+            {{-- <div class="pc-field full">
                 <div class="status-banner ok" style="margin-top:0">
                     After saving this step, you will set agreement type:
                     <strong>Token</strong>, <strong>Send Money</strong>, <strong>Package</strong>, or <strong>No Agreement</strong>.
                 </div>
-            </div>
+            </div> --}}
 
             <div class="pc-actions">
                 <button class="btn" type="submit" @disabled(!$ontAvailable)>Save and Continue to Agreement</button>

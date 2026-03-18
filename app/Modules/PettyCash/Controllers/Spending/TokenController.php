@@ -16,6 +16,7 @@ use App\Modules\PettyCash\Support\TabularExport;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 
 class TokenController extends Controller
 {
@@ -114,8 +115,9 @@ class TokenController extends Controller
         }
 
         $today = Carbon::today();
+        $terminationSupported = $this->hostelAgreementTerminationColumnsAvailable();
 
-        $pageHostels = $pageHostels->map(function ($h) use ($today, $lastPayments) {
+        $pageHostels = $pageHostels->map(function ($h) use ($today, $lastPayments, $terminationSupported) {
             $last = $lastPayments->get($h->id);
 
             $h->last_payment_amount = $last ? (float) $last->amount : null;
@@ -123,7 +125,12 @@ class TokenController extends Controller
 
             $lastDate = $last?->date ? Carbon::parse($last->date)->startOfDay() : null;
 
-            if ($lastDate) {
+            if ($terminationSupported && !empty($h->agreement_terminated_at)) {
+                $h->next_due_date = null;
+                $h->days_to_due = null;
+                $h->due_badge = 'Agreement terminated';
+                $h->due_status = 'terminated';
+            } elseif ($lastDate) {
                 $stake = $h->stake ?: 'monthly';
 
                 if ($stake === 'semester') {
@@ -163,6 +170,11 @@ class TokenController extends Controller
             'overdue'   => $pageHostels->where('due_status', 'overdue')->values(),
         ];
 
+        $canCreateHostel = PettyAccess::allows(auth('petty')->user(), 'tokens.create_hostel');
+        $ontCatalog = $canCreateHostel
+            ? $this->ontCatalogForUi()
+            : ['available' => false, 'message' => '', 'hostels' => []];
+
         return view('pettycash::spendings.tokens.index', compact(
             'hostels',
             'q',
@@ -171,7 +183,9 @@ class TokenController extends Controller
             'today',
             'totalHostels',
             'perPage',
-            'perPageOptions'
+            'perPageOptions',
+            'ontCatalog',
+            'terminationSupported'
         ));
     }
 
@@ -268,8 +282,112 @@ class TokenController extends Controller
         abort_unless($canManage, 403);
 
         $agreementType = $this->normalizeAgreementType((string) ($hostel->agreement_type ?? 'none'));
+        $terminationSupported = $this->hostelAgreementTerminationColumnsAvailable();
 
-        return view('pettycash::spendings.tokens.agreement', compact('hostel', 'agreementType'));
+        return view('pettycash::spendings.tokens.agreement', compact('hostel', 'agreementType', 'terminationSupported'));
+    }
+
+    public function searchHostels(Request $request)
+    {
+        $user = auth('petty')->user();
+        $canSearch = PettyAccess::allows($user, 'tokens.create_hostel')
+            || PettyAccess::allows($user, 'tokens.edit_hostel');
+        abort_unless($canSearch, 403);
+
+        $excludeId = (int) $request->integer('exclude', 0);
+        $limit = max(5, min(50, (int) $request->integer('limit', 20)));
+        $idsParam = trim((string) $request->query('ids', ''));
+        $supportsOntSiteColumns = $this->hostelOntColumnsAvailable();
+
+        $selectColumns = ['id', 'hostel_name', 'meter_no', 'phone_no'];
+        if ($supportsOntSiteColumns) {
+            $selectColumns[] = 'ont_site_sn';
+            $selectColumns[] = 'ont_site_id';
+        }
+
+        $query = Hostel::query();
+        if ($excludeId > 0) {
+            $query->where('id', '<>', $excludeId);
+        }
+
+        if ($idsParam !== '') {
+            $ids = collect(explode(',', $idsParam))
+                ->map(fn ($id) => (int) $id)
+                ->filter()
+                ->unique()
+                ->take(50);
+
+            if ($ids->isEmpty()) {
+                return response()->json(['hostels' => []]);
+            }
+
+            $hostels = $query
+                ->whereIn('id', $ids->all())
+                ->orderBy('hostel_name')
+                ->get($selectColumns);
+
+            return response()->json(['hostels' => $this->attachHostelPaymentSummaries($hostels)]);
+        }
+
+        $q = trim((string) $request->query('q', ''));
+        if ($q === '') {
+            return response()->json(['hostels' => []]);
+        }
+
+        $like = '%' . str_replace('%', '\\%', $q) . '%';
+        $hostels = $query
+            ->where(function ($w) use ($like) {
+                $w->where('hostel_name', 'like', $like)
+                    ->orWhere('meter_no', 'like', $like)
+                    ->orWhere('phone_no', 'like', $like);
+            })
+            ->orderBy('hostel_name')
+            ->limit($limit)
+            ->get($selectColumns);
+
+        return response()->json(['hostels' => $this->attachHostelPaymentSummaries($hostels)]);
+    }
+
+    private function attachHostelPaymentSummaries($hostels)
+    {
+        $hostelList = collect($hostels ?? []);
+        if ($hostelList->isEmpty()) {
+            return [];
+        }
+
+        $hostelIds = $hostelList->pluck('id')->filter()->unique()->values()->all();
+        if (empty($hostelIds)) {
+            return $hostelList->values()->toArray();
+        }
+
+        $paymentStats = Payment::query()
+            ->select('hostel_id')
+            ->selectRaw('COUNT(*) as payments_count')
+            ->selectRaw('COALESCE(SUM(amount), 0) as payments_amount')
+            ->selectRaw('COALESCE(SUM(transaction_cost), 0) as payments_fee')
+            ->selectRaw('MAX(date) as last_payment_date')
+            ->whereIn('hostel_id', $hostelIds)
+            ->groupBy('hostel_id')
+            ->get()
+            ->keyBy('hostel_id');
+
+        return $hostelList->map(function ($hostel) use ($paymentStats) {
+            $stats = $paymentStats->get($hostel->id);
+            return [
+                'id' => (int) $hostel->id,
+                'hostel_name' => $hostel->hostel_name,
+                'meter_no' => $hostel->meter_no,
+                'phone_no' => $hostel->phone_no,
+                'ont_site_sn' => $hostel->ont_site_sn ?? null,
+                'ont_site_id' => $hostel->ont_site_id ?? null,
+                'payments_count' => (int) ($stats->payments_count ?? 0),
+                'payments_amount' => (float) ($stats->payments_amount ?? 0),
+                'payments_fee' => (float) ($stats->payments_fee ?? 0),
+                'last_payment_date' => !empty($stats?->last_payment_date)
+                    ? Carbon::parse($stats->last_payment_date)->format('Y-m-d')
+                    : null,
+            ];
+        })->values()->toArray();
     }
 
     public function updateAgreement(Hostel $hostel, Request $request)
@@ -291,6 +409,8 @@ class TokenController extends Controller
             'contact_person' => ['nullable', 'string', 'max:255'],
             'stake' => ['required', 'in:monthly,semester'],
             'amount_due' => ['required', 'numeric', 'min:0'],
+            'apply_to_hostels' => ['nullable', 'array'],
+            'apply_to_hostels.*' => ['integer', 'exists:petty_hostels,id'],
         ]);
 
         $agreementType = $this->normalizeAgreementType((string) ($data['agreement_type'] ?? 'none'));
@@ -323,6 +443,12 @@ class TokenController extends Controller
             'stake' => $data['stake'],
             'amount_due' => $data['amount_due'],
         ];
+        if ($this->hostelAgreementTerminationColumnsAvailable()) {
+            $payload['agreement_terminated_at'] = null;
+            $payload['agreement_termination_reason'] = null;
+            $payload['agreement_termination_notes'] = null;
+            $payload['agreement_transfer_hostel_id'] = null;
+        }
 
         if ($agreementType === 'token') {
             $payload['meter_no'] = $meterNo;
@@ -339,11 +465,86 @@ class TokenController extends Controller
             $payload['phone_no'] = ($phoneNo !== '' ? $phoneNo : null);
         }
 
-        $hostel->update($payload);
+        $applyHostels = collect($data['apply_to_hostels'] ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->reject(fn ($id) => $id === (int) $hostel->id)
+            ->values();
+
+        DB::transaction(function () use ($hostel, $payload, $applyHostels) {
+            $hostel->update($payload);
+            if ($applyHostels->isNotEmpty()) {
+                Hostel::query()
+                    ->whereIn('id', $applyHostels->all())
+                    ->update($payload);
+            }
+        });
+
+        $applyCount = $applyHostels->count();
+        $message = $applyCount > 0
+            ? ('Agreement saved and applied to ' . $applyCount . ' hostel' . ($applyCount === 1 ? '' : 's') . '.')
+            : 'Agreement saved.';
 
         return redirect()
             ->route('petty.tokens.hostels.show', $hostel->id)
-            ->with('success', 'Agreement saved.');
+            ->with('success', $message);
+    }
+
+    public function terminateAgreement(Hostel $hostel, Request $request)
+    {
+        $user = auth('petty')->user();
+        $canManage = PettyAccess::allows($user, 'tokens.create_hostel')
+            || PettyAccess::allows($user, 'tokens.edit_hostel');
+        abort_unless($canManage, 403);
+
+        if (!$this->hostelAgreementTerminationColumnsAvailable()) {
+            return back()->with('error', 'Agreement termination fields are not available yet. Run the latest migrations first.');
+        }
+
+        $data = $request->validate([
+            'termination_reason' => ['required', 'in:transfer_agreement,closed,moved,other'],
+            'termination_notes' => ['nullable', 'string', 'max:255'],
+            'transfer_hostel_id' => ['nullable', 'integer', 'exists:petty_hostels,id'],
+        ]);
+
+        $reason = strtolower(trim((string) $data['termination_reason']));
+        $transferId = array_key_exists('transfer_hostel_id', $data) && $data['transfer_hostel_id'] !== null
+            ? (int) $data['transfer_hostel_id']
+            : null;
+
+        if ($reason === 'transfer_agreement' && !$transferId) {
+            return back()->withErrors([
+                'transfer_hostel_id' => 'Transfer target is required when reason is transfer agreement.',
+            ])->withInput();
+        }
+
+        if ($reason !== 'transfer_agreement') {
+            $transferId = null;
+        }
+
+        if ($transferId !== null && $transferId === (int) $hostel->id) {
+            return back()->withErrors([
+                'transfer_hostel_id' => 'Transfer target cannot be the same hostel.',
+            ])->withInput();
+        }
+
+        $payload = [
+            'agreement_terminated_at' => now(),
+            'agreement_termination_reason' => $reason,
+            'agreement_termination_notes' => trim((string) ($data['termination_notes'] ?? '')) ?: null,
+            'agreement_transfer_hostel_id' => $transferId,
+        ];
+        if ($this->hostelAgreementColumnsAvailable()) {
+            $payload['agreement_type'] = 'none';
+            $payload['agreement_label'] = null;
+        }
+
+        $hostel->update($payload);
+
+        return redirect()
+            ->route('petty.tokens.hostels.show', ['hostel' => $hostel->id])
+            ->with('success', 'Agreement terminated.');
     }
 
     public function updateHostel(Hostel $hostel, Request $request)
@@ -501,7 +702,13 @@ class TokenController extends Controller
 
     public function showHostel(Hostel $hostel)
     {
-        $payments = Payment::with('batch')
+        $supportsOverpay = $this->paymentOverpayColumnsAvailable();
+        $paymentQuery = Payment::query()->with('batch');
+        if ($supportsOverpay) {
+            $paymentQuery->with('overpaySource');
+        }
+
+        $payments = $paymentQuery
             ->where('hostel_id', $hostel->id)
             ->orderByDesc('date')
             ->orderByDesc('id')
@@ -544,11 +751,81 @@ class TokenController extends Controller
                 else { $dueBadge = 'Due in ' . $daysToDue . ' days'; $dueStatus = 'upcoming'; }
         }
 
+        $terminationSupported = $this->hostelAgreementTerminationColumnsAvailable();
+        $agreementTerminated = $terminationSupported && !empty($hostel->agreement_terminated_at);
+        if ($agreementTerminated) {
+            $nextDue = null;
+            $daysToDue = null;
+            $dueBadge = 'Agreement terminated';
+            $dueStatus = 'terminated';
+        }
+
         $ontCatalog = $this->ontCatalogForUi((string) $hostel->hostel_name, 30);
         $selectedOnt = $this->findOntCandidateForHostel($ontCatalog, (string) $hostel->hostel_name);
         $selectedOntKey = (string) ($selectedOnt['key'] ?? '');
         $agreementType = $this->normalizeAgreementType((string) ($hostel->agreement_type ?? 'none'));
         $agreementTypeLabel = $this->agreementTypeLabel($agreementType);
+        $transferTargets = collect();
+        $transferHostel = null;
+        if ($terminationSupported) {
+            $transferTargets = Hostel::query()
+                ->where('id', '<>', $hostel->id)
+                ->orderBy('hostel_name')
+                ->get(['id', 'hostel_name', 'meter_no', 'phone_no']);
+            if (!empty($hostel->agreement_transfer_hostel_id)) {
+                $transferHostel = $transferTargets->firstWhere('id', (int) $hostel->agreement_transfer_hostel_id);
+            }
+            if ($transferHostel === null && !empty($hostel->agreement_transfer_hostel_id)) {
+                $transferHostel = Hostel::query()
+                    ->whereKey((int) $hostel->agreement_transfer_hostel_id)
+                    ->first(['id', 'hostel_name', 'meter_no', 'phone_no']);
+            }
+        }
+        $overpayCandidates = collect();
+        if ($supportsOverpay && $agreementType !== 'package') {
+            $sourcePool = $payments
+                ->filter(fn (Payment $payment) => !(bool) ($payment->is_overpay_application ?? false))
+                ->sortBy([
+                    ['date', 'asc'],
+                    ['id', 'asc'],
+                ])
+                ->values();
+
+            $eligibleSourceIds = collect();
+            $cycleMonths = $this->cycleMonthsForHostel($hostel);
+            $previousDate = null;
+
+            foreach ($sourcePool as $sourcePayment) {
+                $sourceDate = $sourcePayment->date ? Carbon::parse($sourcePayment->date)->startOfDay() : null;
+                if ($sourceDate === null) {
+                    continue;
+                }
+
+                if ($previousDate !== null) {
+                    $expectedDue = $previousDate->copy()->addMonthsNoOverflow($cycleMonths)->startOfDay();
+                    if ($sourceDate->lt($expectedDue)) {
+                        $eligibleSourceIds->push((int) $sourcePayment->id);
+                    }
+                }
+
+                $previousDate = $sourceDate;
+            }
+
+            $usedSourceIds = Payment::query()
+                ->where('hostel_id', $hostel->id)
+                ->where('is_overpay_application', true)
+                ->whereNotNull('overpay_source_payment_id')
+                ->pluck('overpay_source_payment_id')
+                ->map(fn ($id) => (int) $id)
+                ->unique();
+
+            $overpayCandidates = $payments
+                ->filter(fn (Payment $payment) => !(bool) ($payment->is_overpay_application ?? false))
+                ->filter(fn (Payment $payment) => $eligibleSourceIds->contains((int) $payment->id))
+                ->reject(fn (Payment $payment) => $usedSourceIds->contains((int) $payment->id))
+                ->values();
+        }
+
         $supportsPendingCredits = $this->hostelPendingCreditsAvailable();
         $pendingCredits = collect();
 
@@ -576,9 +853,163 @@ class TokenController extends Controller
             'selectedOntKey',
             'agreementType',
             'agreementTypeLabel',
+            'terminationSupported',
+            'agreementTerminated',
+            'transferTargets',
+            'transferHostel',
+            'supportsOverpay',
+            'overpayCandidates',
             'supportsPendingCredits',
             'pendingCredits'
         ));
+    }
+
+    public function applyOverpay(Hostel $hostel, Request $request)
+    {
+        if (!$this->paymentOverpayColumnsAvailable()) {
+            return back()->with('error', 'Overpay action is unavailable. Run latest migrations first.');
+        }
+
+        $agreementType = $this->normalizeAgreementType((string) ($hostel->agreement_type ?? 'none'));
+        if ($agreementType === 'package') {
+            return back()->with('error', 'Overpay action is not available for package agreements.');
+        }
+
+        $data = $request->validate([
+            'source_payment_id' => ['required', 'integer', 'exists:petty_payments,id'],
+            'marked_date' => ['required', 'date'],
+            'date_mode' => ['nullable', 'in:from_marked_date,next_billing_date'],
+            'next_billing_date' => ['nullable', 'date'],
+            'notes' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        try {
+            DB::transaction(function () use ($hostel, $data) {
+                /** @var Payment|null $source */
+                $source = Payment::query()
+                    ->whereKey((int) $data['source_payment_id'])
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$source || (int) $source->hostel_id !== (int) $hostel->id) {
+                    throw ValidationException::withMessages([
+                        'source_payment_id' => 'Select a valid source payment for this hostel.',
+                    ]);
+                }
+
+                if ((bool) ($source->is_overpay_application ?? false)) {
+                    throw ValidationException::withMessages([
+                        'source_payment_id' => 'You cannot use an overpay-adjusted row as source.',
+                    ]);
+                }
+
+                $alreadyUsed = Payment::query()
+                    ->where('hostel_id', $hostel->id)
+                    ->where('is_overpay_application', true)
+                    ->where('overpay_source_payment_id', $source->id)
+                    ->exists();
+
+                if ($alreadyUsed) {
+                    throw ValidationException::withMessages([
+                        'source_payment_id' => 'This payment has already been used for an overpay adjustment.',
+                    ]);
+                }
+
+                if (!$this->isSourcePaymentOverpayEligible($hostel, $source)) {
+                    throw ValidationException::withMessages([
+                        'source_payment_id' => 'Selected payment is not an overpay source (time lapse was already met).',
+                    ]);
+                }
+
+                $markedDate = Carbon::parse((string) $data['marked_date'])->startOfDay();
+                $dateMode = strtolower(trim((string) ($data['date_mode'] ?? 'from_marked_date')));
+                if (!in_array($dateMode, ['from_marked_date', 'next_billing_date'], true)) {
+                    $dateMode = 'from_marked_date';
+                }
+
+                $applyDate = $markedDate->format('Y-m-d');
+                $nextBillingDateLabel = null;
+                if ($dateMode === 'next_billing_date') {
+                    $nextBillingRaw = trim((string) ($data['next_billing_date'] ?? ''));
+                    if ($nextBillingRaw === '') {
+                        throw ValidationException::withMessages([
+                            'next_billing_date' => 'Next billing date is required when that mode is selected.',
+                        ]);
+                    }
+
+                    $nextBillingDate = Carbon::parse($nextBillingRaw)->startOfDay();
+                    if ($nextBillingDate->lt($markedDate)) {
+                        throw ValidationException::withMessages([
+                            'next_billing_date' => 'Next billing date cannot be before the marked date.',
+                        ]);
+                    }
+
+                    $applyDate = $nextBillingDate
+                        ->copy()
+                        ->subMonthsNoOverflow($this->cycleMonthsForHostel($hostel))
+                        ->format('Y-m-d');
+                    $nextBillingDateLabel = $nextBillingDate->format('Y-m-d');
+                }
+
+                $sourceDate = $source->date?->format('Y-m-d');
+                $sourceRef = trim((string) ($source->reference ?? ''));
+                $sourceRefSanitized = preg_replace('/[^A-Za-z0-9]/', '', strtoupper($sourceRef)) ?? '';
+                $referenceBase = $sourceRefSanitized !== ''
+                    ? ('OVERPAY-' . $sourceRefSanitized)
+                    : ('OVERPAY-P' . $source->id);
+                $reference = $referenceBase . '-' . Carbon::parse($applyDate)->format('Ymd');
+                if (strlen($reference) > 255) {
+                    $reference = substr($reference, 0, 255);
+                }
+
+                $auditNote = 'Overpay applied from payment #' . $source->id;
+                if ($sourceDate !== null) {
+                    $auditNote .= ' dated ' . $sourceDate;
+                }
+                if ($sourceRef !== '') {
+                    $auditNote .= ' (Ref: ' . $sourceRef . ')';
+                }
+                if ($dateMode === 'next_billing_date' && $nextBillingDateLabel !== null) {
+                    $auditNote .= ' | Next billing date: ' . $nextBillingDateLabel;
+                } else {
+                    $auditNote .= ' | Marked date: ' . $markedDate->format('Y-m-d');
+                }
+                $userNote = trim((string) ($data['notes'] ?? ''));
+                $fullNote = $userNote !== '' ? ($auditNote . ' | ' . $userNote) : $auditNote;
+                if (strlen($fullNote) > 255) {
+                    $fullNote = substr($fullNote, 0, 255);
+                }
+
+                $agreementReceiverName = trim((string) ($hostel->contact_person ?? ''));
+                $agreementReceiverPhone = trim((string) ($hostel->phone_no ?? ''));
+
+                Payment::query()->create([
+                    'hostel_id' => $hostel->id,
+                    'spending_id' => null,
+                    'batch_id' => null,
+                    'is_overpay_application' => true,
+                    'overpay_source_payment_id' => $source->id,
+                    'reference' => $reference,
+                    'amount' => (float) ($source->amount ?? 0),
+                    'transaction_cost' => 0,
+                    'date' => $applyDate,
+                    'receiver_name' => $agreementReceiverName !== '' ? $agreementReceiverName : ($source->receiver_name ?: null),
+                    'receiver_phone' => $agreementReceiverPhone !== '' ? $agreementReceiverPhone : ($source->receiver_phone ?: null),
+                    'notes' => $fullNote,
+                    'recorded_by' => auth('petty')->id(),
+                ]);
+            });
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return back()->withErrors([
+                'source_payment_id' => $e->getMessage(),
+            ])->withInput();
+        }
+
+        return redirect()
+            ->route('petty.tokens.hostels.show', ['hostel' => $hostel->id])
+            ->with('success', 'Overpay marked from existing payment. No petty balance deducted.');
     }
 
     public function storePendingCredit(Hostel $hostel, Request $request)
@@ -1080,6 +1511,62 @@ class TokenController extends Controller
         return $supports;
     }
 
+    private function paymentOverpayColumnsAvailable(): bool
+    {
+        static $supports = null;
+
+        if ($supports === null) {
+            $supports = Schema::hasColumn('petty_payments', 'is_overpay_application')
+                && Schema::hasColumn('petty_payments', 'overpay_source_payment_id');
+        }
+
+        return $supports;
+    }
+
+    private function cycleMonthsForHostel(Hostel $hostel): int
+    {
+        return (($hostel->stake ?: 'monthly') === 'semester') ? 4 : 1;
+    }
+
+    private function isSourcePaymentOverpayEligible(Hostel $hostel, Payment $source): bool
+    {
+        if (!$source->date) {
+            return false;
+        }
+
+        $sourceDate = Carbon::parse($source->date)->startOfDay();
+        $sourceDateString = $sourceDate->format('Y-m-d');
+
+        $previous = Payment::query()
+            ->where('hostel_id', $hostel->id)
+            ->where(function ($w) {
+                $w->whereNull('is_overpay_application')
+                    ->orWhere('is_overpay_application', false);
+            })
+            ->where(function ($w) use ($sourceDateString, $source) {
+                $w->whereDate('date', '<', $sourceDateString)
+                    ->orWhere(function ($sameDate) use ($sourceDateString, $source) {
+                        $sameDate->whereDate('date', $sourceDateString)
+                            ->where('id', '<', (int) $source->id);
+                    });
+            })
+            ->orderByDesc('date')
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$previous || !$previous->date) {
+            return false;
+        }
+
+        $previousDate = Carbon::parse($previous->date)->startOfDay();
+        $expectedDue = $previousDate
+            ->copy()
+            ->addMonthsNoOverflow($this->cycleMonthsForHostel($hostel))
+            ->startOfDay();
+
+        return $sourceDate->lt($expectedDue);
+    }
+
     private function hostelOntColumnsAvailable(): bool
     {
         static $supports = null;
@@ -1110,6 +1597,19 @@ class TokenController extends Controller
         if ($supports === null) {
             $supports = Schema::hasColumn('petty_hostels', 'agreement_type')
                 && Schema::hasColumn('petty_hostels', 'agreement_label');
+        }
+
+        return $supports;
+    }
+
+    private function hostelAgreementTerminationColumnsAvailable(): bool
+    {
+        static $supports = null;
+
+        if ($supports === null) {
+            $supports = Schema::hasColumn('petty_hostels', 'agreement_terminated_at')
+                && Schema::hasColumn('petty_hostels', 'agreement_termination_reason')
+                && Schema::hasColumn('petty_hostels', 'agreement_transfer_hostel_id');
         }
 
         return $supports;

@@ -2,6 +2,8 @@
 
 namespace App\Modules\Inventory\Http\Controllers\Auth;
 
+use App\Modules\Inventory\Support\InventoryAccess;
+use App\Modules\Inventory\Support\InventoryActivity;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Hash;
@@ -31,17 +33,17 @@ class InventoryPasswordController extends Controller
         $user->inventory_password_changed_at = now();
         $user->save();
 
-        // Role-based landing after password change
-        $role = strtolower((string)($user->inventory_role ?? ''));
+        InventoryActivity::log($user, 'password_changed', $request);
 
-        if ($role === 'technician') {
+        $landingRoute = InventoryAccess::landingRouteName($user);
+        if ($landingRoute !== null) {
             return redirect()
-                ->route('inventory.tech.items.index')
+                ->route($landingRoute)
                 ->with('success', 'Password updated.');
         }
 
         return redirect()
-            ->route('inventory.dashboard')
-            ->with('success', 'Password updated.');
+            ->route('inventory.auth.login')
+            ->with('success', 'Password updated. Log in again when access is ready.');
     }
 }

@@ -85,7 +85,7 @@
         </div>
 
         <div class="inv-table-tools">
-            <form class="d-flex gap-2 flex-wrap align-items-center" method="GET" action="{{ route('inventory.logs.index') }}" data-inv-loading>
+            <form class="d-flex gap-2 flex-wrap align-items-center" method="GET" action="{{ route('inventory.logs.index') }}" data-inv-loading data-inv-autofilter>
                 <select class="form-select form-select-sm" name="action" style="min-width: 170px;">
                     <option value="" @selected($action==='')>All Actions</option>
                     <option value="received" @selected($action==='received')>Received</option>

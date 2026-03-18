@@ -32,6 +32,6 @@ class ItemUnit extends Model
 
     public function assignee(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'assigned_to');
+        return $this->belongsTo(InventoryUser::class, 'assigned_to');
     }
 }

@@ -19,15 +19,15 @@
     $errMsg = fn($key) => $errors->first($key);
 
     // Old input preservation (after validation failure)
-    $oldTech = old('technician_id');
-    $oldItem = old('item_id');
-    $oldQty = old('qty', 1);
-    $oldUnit = old('unit_id');
+    $oldTech = old('technician_id', request()->query('technician_id'));
+    $oldItem = old('item_id', request()->query('item_id'));
+    $oldQty = old('qty', request()->query('qty', 1));
+    $oldUnit = old('unit_id', request()->query('unit_id'));
 
-    $oldSite = old('site_name');
-    $oldSiteCode = old('site_code');
-    $oldRef = old('reference');
-    $oldNotes = old('notes');
+    $oldSite = old('site_name', request()->query('site_name'));
+    $oldSiteCode = old('site_code', request()->query('site_code'));
+    $oldRef = old('reference', request()->query('reference'));
+    $oldNotes = old('notes', request()->query('notes'));
 
     $loading = request()->boolean('loading');
 @endphp

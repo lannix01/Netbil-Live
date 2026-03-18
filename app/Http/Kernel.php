@@ -62,7 +62,9 @@ class Kernel extends HttpKernel
         // Inventory module middleware
         'inventory.auth' => \App\Modules\Inventory\Http\Middleware\InventoryAuth::class,
         'inventory.force_password_change' => \App\Modules\Inventory\Http\Middleware\InventoryForcePasswordChange::class,
+        'inventory.permission' => \App\Modules\Inventory\Http\Middleware\InventoryPermission::class,
         'inventory.role' => \App\Modules\Inventory\Http\Middleware\InventoryRole::class,
+        'inventory.activity' => \App\Modules\Inventory\Http\Middleware\InventoryActivityLogger::class,
         'petty.api.auth' => \App\Modules\PettyCash\Middleware\PettyApiAuth::class,
         'petty.api.meta' => \App\Modules\PettyCash\Middleware\PettyApiMetaHeaders::class,
         'petty.permission' => \App\Modules\PettyCash\Middleware\PettyPermission::class,

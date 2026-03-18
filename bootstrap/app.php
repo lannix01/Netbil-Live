@@ -38,7 +38,9 @@ return Application::configure(basePath: dirname(__DIR__))
             // Inventory module middleware aliases
             'inventory.auth' => \App\Modules\Inventory\Http\Middleware\InventoryAuth::class,
             'inventory.force_password_change' => \App\Modules\Inventory\Http\Middleware\InventoryForcePasswordChange::class,
+            'inventory.permission' => \App\Modules\Inventory\Http\Middleware\InventoryPermission::class,
             'inventory.role' => \App\Modules\Inventory\Http\Middleware\InventoryRole::class,
+            'inventory.activity' => \App\Modules\Inventory\Http\Middleware\InventoryActivityLogger::class,
             'audit.log' => \App\Http\Middleware\RecordSystemAudit::class,
         ]);
 
