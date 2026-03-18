@@ -28,7 +28,7 @@
         </div>
 
         <div class="inv-table-tools">
-            <form class="d-flex gap-2 flex-wrap" method="GET" action="{{ route('inventory.teams.index') }}" data-inv-loading>
+            <form class="d-flex gap-2 flex-wrap" method="GET" action="{{ route('inventory.teams.index') }}" data-inv-loading data-inv-autofilter>
                 <input
                     class="form-control form-control-sm"
                     name="q"

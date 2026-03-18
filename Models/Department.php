@@ -13,6 +13,6 @@ class Department extends Model
 
     public function users(): HasMany
     {
-        return $this->hasMany(\App\Models\User::class, 'department_id');
+        return $this->hasMany(InventoryUser::class, 'department_id');
     }
 }

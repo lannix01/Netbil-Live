@@ -36,16 +36,16 @@ class InventoryLog extends Model
 
     public function fromUser(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'from_user_id');
+        return $this->belongsTo(InventoryUser::class, 'from_user_id');
     }
 
     public function toUser(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'to_user_id');
+        return $this->belongsTo(InventoryUser::class, 'to_user_id');
     }
 
     public function creator(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'created_by');
+        return $this->belongsTo(InventoryUser::class, 'created_by');
     }
 }

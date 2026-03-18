@@ -1,712 +1,424 @@
 @extends('inventory::layout')
 
 @section('page-title', 'Dashboard')
-@section('page-subtitle', 'Quick overview of stock health, field activity, and audit trail.')
+@section('page-subtitle', 'Overview')
+
+@php
+    $access = \App\Modules\Inventory\Support\InventoryAccess::class;
+    $authUser = auth('inventory')->user();
+    $can = fn (string $permission) => $access::allows($authUser, $permission);
+@endphp
 
 @section('page-actions')
-    <a class="inv-pillbtn inv-pillbtn--dark" href="{{ route('inventory.items.index') }}" data-inv-loading>
-        <i class="bi bi-box-seam"></i> Items
-    </a>
-    <a class="inv-pillbtn" href="{{ route('inventory.receipts.create') }}" data-inv-loading>
-        <i class="bi bi-inbox-arrow-down"></i> Receive
-    </a>
-    <a class="inv-pillbtn" href="{{ route('inventory.team_assignments.index') }}" data-inv-loading>
-        <i class="bi bi-people"></i> Team Assign
-    </a>
+    @if($can('receipts.manage'))
+        <a class="btn btn-dark btn-sm" href="{{ route('inventory.receipts.create') }}" data-inv-loading>
+            <i class="bi bi-inbox-arrow-down me-1"></i> Receive
+        </a>
+    @endif
+    @if($can('routers.view'))
+        <a class="btn btn-outline-dark btn-sm" href="{{ route('inventory.routers.index') }}" data-inv-loading>
+            <i class="bi bi-hdd-network me-1"></i> Routers
+        </a>
+    @endif
+    @if($can('logs.view'))
+        <a class="btn btn-outline-secondary btn-sm" href="{{ route('inventory.logs.index') }}" data-inv-loading>
+            <i class="bi bi-journal-text me-1"></i> Logs
+        </a>
+    @endif
 @endsection
 
 @section('inventory-content')
 @php
-    $u = auth('inventory')->user();
-
-    $items = $items ?? 0;
-    $lowStock = $lowStock ?? 0;
-    $teams = $teams ?? 0;
-    $logs7d = $logs7d ?? 0;
-
-    $name = $u?->name ?? 'there';
+    $items = (int) ($items ?? 0);
+    $lowStock = (int) ($lowStock ?? 0);
+    $teams = (int) ($teams ?? 0);
+    $logs7d = (int) ($logs7d ?? 0);
     $loading = request()->boolean('loading');
 @endphp
 
 <style>
-    /* ===== Inventory Dashboard (NetBil-like spacing + cards) ===== */
-    .inv-dashboard { padding-bottom: 1rem; }
-
-    /* ===== PILL BUTTONS (make ALL dashboard links feel like UI controls) ===== */
-    .inv-pillbtn{
-        display:inline-flex;
-        align-items:center;
-        gap:.45rem;
-        padding: .42rem .75rem;
-        border-radius: 999px;
-        border: 1px solid rgba(2,6,23,.10);
-        background: #8fa4ad;
-        color: var(--text);
-        font-weight: 900;
-        font-size: 12px;
-        text-decoration:none !important;
-        box-shadow: 0 10px 22px rgba(2,6,23,.06);
-        transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease, background .14s ease;
-        user-select:none;
-        white-space:nowrap;
-    }
-    .inv-pillbtn i{ font-size: 14px; line-height: 1; opacity: .9; }
-    .inv-pillbtn:hover{
-        transform: translateY(-1px);
-        box-shadow: 0 16px 30px rgba(2,6,23,.10);
-        border-color: rgba(2,6,23,.18);
-        color: var(--text);
-        background: #fbfcff;
-    }
-    .inv-pillbtn:active{
-        transform: translateY(0px);
-        box-shadow: 0 10px 22px rgba(2,6,23,.08);
-    }
-    .inv-pillbtn--dark{
-        background: #0b1220;
-        border-color: #0b1220;
-        color: #fff;
-    }
-    .inv-pillbtn--dark:hover{ color:#fff; background:#0b1220; border-color:#0b1220; }
-    .inv-pillbtn--soft{
-        background: rgba(2,6,23,.04);
-        border-color: rgba(2,6,23,.08);
-    }
-
-    /* Optional: small icon "chip" inside pills */
-    .inv-pill-ico{
-        width: 22px;
-        height: 22px;
-        border-radius: 999px;
+    .dash-shell{ display:grid; gap:18px; }
+    .dash-stats{
         display:grid;
-        place-items:center;
-        background: rgba(2,6,23,.06);
-        border: 1px solid rgba(2,6,23,.06);
+        grid-template-columns:repeat(4, minmax(0, 1fr));
+        gap:14px;
     }
-    .inv-pillbtn--dark .inv-pill-ico{
-        background: rgba(255,255,255,.14);
-        border-color: rgba(255,255,255,.14);
-    }
-
-    /* ===== Make simple links UNDER DASHBOARD look like pill buttons ===== */
-    .inv-linkpill{
-        display:inline-flex;
-        align-items:center;
-        gap:.5rem;
-        padding: .40rem .70rem;
-        border-radius: 999px;
-        border: 1px solid rgba(2,6,23,.10);
-        background: #fff;
-        color: var(--text);
-        font-weight: 900;
-        font-size: 12px;
-        text-decoration:none !important;
-        box-shadow: 0 10px 22px rgba(2,6,23,.06);
-        transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease, background .14s ease;
-        user-select:none;
-        white-space:nowrap;
-    }
-    .inv-linkpill i{ font-size: 13px; opacity:.9; }
-    .inv-linkpill:hover{
-        transform: translateY(-1px);
-        box-shadow: 0 16px 30px rgba(2,6,23,.10);
-        border-color: rgba(2,6,23,.18);
-        color: var(--text);
-        background: #fbfcff;
-    }
-    .inv-linkpill--danger{
-        border-color: rgba(220,38,38,.25);
-        background: rgba(220,38,38,.04);
-    }
-    .inv-linkpill--danger:hover{
-        border-color: rgba(220,38,38,.40);
-        background: rgba(220,38,38,.06);
-    }
-
-    /* ===== Hero ===== */
-    .inv-hero {
-        background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
-        border: 1px solid var(--border);
-    }
-    .inv-hero-title { font-weight: 900; letter-spacing: -0.02em; margin:0; }
-    .inv-hero-sub { color: var(--muted); font-size: 13px; margin-top: .35rem; }
-
-    /* ===== Stats row: spaced cards ===== */
-    .inv-stat-grid{
-        display:grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 14px;
-        margin-bottom: 14px;
-    }
-    @media (max-width: 1199.98px){ .inv-stat-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-    @media (max-width: 575.98px){ .inv-stat-grid{ grid-template-columns: 1fr; } }
-
-    .inv-stat-card{
+    .dash-stat{
         position:relative;
+        display:grid;
+        gap:14px;
+        min-height:160px;
+        padding:18px;
         overflow:hidden;
-        padding: 16px !important;
-        border-radius: 16px;
-        background: var(--card);
-        border: 1px solid var(--border);
-        box-shadow: 0 10px 24px rgba(2,6,23,.06);
-        transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
-        cursor: default;
-        min-height: 96px;
+        background:
+            radial-gradient(circle at top right, rgba(77, 138, 102, .10), transparent 28%),
+            linear-gradient(180deg, #ffffff 0%, #f6fbf5 100%);
     }
-    .inv-stat-card:hover{
-        transform: translateY(-2px);
-        box-shadow: 0 18px 38px rgba(2,6,23,.10);
-        border-color: rgba(2,6,23,.14);
-    }
-
-    /* Left color bar like NetBil */
-    .inv-stat-card:before{
-        content:'';
+    .dash-stat::before{
+        content:"";
         position:absolute;
-        left:0;
         top:0;
-        bottom:0;
-        width: 4px;
-        background: #2563eb;
-        opacity: .95;
+        left:0;
+        right:0;
+        height:5px;
+        background:linear-gradient(90deg, var(--brand) 0%, var(--brand-strong) 100%);
     }
-    .inv-stat--items:before{ background:#2563eb; }
-    .inv-stat--low:before{ background:#f59e0b; }
-    .inv-stat--teams:before{ background:#7c3aed; }
-    .inv-stat--logs:before{ background:#10b981; }
-
-    .inv-stat-top{
+    .dash-stat:nth-child(2)::before{
+        background:linear-gradient(90deg, #b88c38 0%, #8c6621 100%);
+    }
+    .dash-stat:nth-child(3)::before{
+        background:linear-gradient(90deg, #6f7a70 0%, #4f594f 100%);
+    }
+    .dash-stat:nth-child(4)::before{
+        background:linear-gradient(90deg, #54827b 0%, #3b5f59 100%);
+    }
+    .dash-stat-head{
         display:flex;
         align-items:flex-start;
         justify-content:space-between;
-        gap: 10px;
+        gap:12px;
     }
-    .inv-stat-left{ min-width:0; }
-    .inv-stat-value{
-        font-size: 22px;
-        font-weight: 900;
-        letter-spacing: -.02em;
-        margin: 0;
-        line-height: 1.1;
+    .dash-stat-label{
+        font-size:11px;
+        font-weight:700;
+        letter-spacing:.16em;
+        text-transform:uppercase;
+        color:var(--muted);
     }
-    .inv-stat-label{
-        margin-top: 4px;
-        color: var(--muted);
-        font-size: 12px;
-        font-weight: 700;
+    .dash-stat-value{
+        margin-top:10px;
+        font-family:"Space Grotesk", sans-serif;
+        font-size:42px;
+        line-height:.95;
+        letter-spacing:-.06em;
+        color:var(--text);
     }
-
-    .inv-stat-ico{
-        width: 44px;
-        height: 44px;
-        border-radius: 14px;
+    .dash-stat-sub{
+        color:var(--muted);
+        font-size:13px;
+        line-height:1.45;
+    }
+    .dash-stat-ico{
+        width:48px;
+        height:48px;
+        border-radius:16px;
         display:grid;
         place-items:center;
-        border: 1px solid var(--border);
-        background: #fff;
-        box-shadow: 0 10px 20px rgba(2,6,23,.05);
-        transition: transform .14s ease;
-        flex: 0 0 auto;
-    }
-    .inv-stat-card:hover .inv-stat-ico{ transform: scale(1.06); }
-    .inv-stat-ico i{
-        font-size: 20px;
-        opacity: .85;
-        color: #0b1220;
+        border:1px solid var(--line);
+        background:#ffffff;
+        color:var(--brand-strong);
+        font-size:18px;
+        box-shadow:0 10px 20px rgba(28, 46, 34, .06);
     }
 
-    /* NetBil-ish mini KPI row */
-    .inv-mini-row{
+    .dash-grid{
         display:grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 14px;
-        margin-bottom: 14px;
+        grid-template-columns:minmax(0, 1.15fr) minmax(320px, .85fr);
+        gap:16px;
     }
-    @media (max-width: 991.98px){ .inv-mini-row{ grid-template-columns: 1fr; } }
-
-    .inv-mini-card{
-        padding: 14px !important;
-        border-radius: 16px;
-        background: var(--card);
-        border: 1px solid var(--border);
-        box-shadow: 0 10px 24px rgba(2,6,23,.06);
-        transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
-    }
-    .inv-mini-card:hover{
-        transform: translateY(-2px);
-        box-shadow: 0 18px 38px rgba(2,6,23,.10);
-        border-color: rgba(2,6,23,.14);
-    }
-    .inv-mini-top{
-        display:flex;
-        align-items:flex-start;
-        justify-content:space-between;
-        gap:10px;
-    }
-    .inv-mini-title{
-        font-weight: 900;
-        margin:0;
-        font-size: 13px;
-        letter-spacing:.2px;
-    }
-    .inv-mini-value{
-        margin-top: 8px;
-        display:flex;
-        flex-wrap:wrap;
-        gap: 8px;
-        align-items:center;
-    }
-    .inv-mini-ico{
-        width: 38px;
-        height: 38px;
-        border-radius: 14px;
-        display:grid;
-        place-items:center;
-        background: rgba(2,6,23,.06);
-        border: 1px solid rgba(2,6,23,.06);
-        flex: 0 0 auto;
-    }
-    .inv-mini-ico i{ font-size: 18px; opacity:.85; }
-
-    /* Bottom: two big panels */
-    .inv-bottom-grid{
-        display:grid;
-        grid-template-columns: 1.1fr .9fr;
-        gap: 14px;
-        align-items: stretch;
-    }
-    @media (max-width: 991.98px){
-        .inv-bottom-grid{ grid-template-columns: 1fr; }
-    }
-
-    .inv-panel{
-        border-radius: 16px;
+    .dash-panel{
         overflow:hidden;
-        background: var(--card);
-        border: 1px solid var(--border);
-        box-shadow: 0 14px 34px rgba(2,6,23,.06);
     }
-    .inv-panel-head{
-        padding: 12px 14px;
-        background: #fbfcff;
-        border-bottom: 1px solid var(--border);
+    .dash-panel-head{
         display:flex;
         align-items:center;
         justify-content:space-between;
-        gap: 10px;
+        gap:12px;
+        padding:18px 20px;
+        border-bottom:1px solid var(--line);
+        background:linear-gradient(180deg, #fbfdf8 0%, #eef5ee 100%);
     }
-    .inv-panel-title{
-        font-weight: 900;
+    .dash-panel-title{
         margin:0;
-        font-size: 13px;
-        letter-spacing:.2px;
+        font-family:"Space Grotesk", sans-serif;
+        font-size:22px;
+        letter-spacing:-.04em;
     }
-    .inv-panel-action{
-        width: 34px;
-        height: 34px;
-        border-radius: 10px;
-        border: 1px solid var(--border);
-        background: #fff;
-        display:grid;
-        place-items:center;
-        color: #0b1220;
-        box-shadow: 0 10px 20px rgba(2,6,23,.05);
-        transition: transform .14s ease, box-shadow .14s ease;
-        text-decoration:none !important;
+    .dash-panel-sub{
+        color:var(--muted);
+        font-size:13px;
     }
-    .inv-panel-action:hover{
-        transform: translateY(-1px) scale(1.04);
-        box-shadow: 0 16px 28px rgba(2,6,23,.10);
-        color:#0b1220;
+    .dash-panel-body{
+        padding:18px;
     }
-    .inv-panel-body{ padding: 14px; }
 
-    /* Graph placeholder */
-    .inv-graph-box{
-        border-radius: 14px;
-        border: 1px dashed rgba(2,6,23,.18);
-        background: rgba(248,250,252,.85);
-        min-height: 320px;
-        display:flex;
+    .dash-actions{
+        display:grid;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:12px;
+    }
+    .dash-action{
+        display:grid;
+        grid-template-columns:auto 1fr auto;
         align-items:center;
-        justify-content:center;
-        padding: 16px;
+        gap:12px;
+        padding:15px 16px;
+        border-radius:22px;
+        border:1px solid var(--line);
+        background:linear-gradient(180deg, #ffffff 0%, #f5faf4 100%);
+        text-decoration:none;
+        transition:transform .16s ease, border-color .16s ease, box-shadow .16s ease;
     }
-    .inv-graph-empty{
-        text-align:center;
-        max-width: 460px;
-        color: var(--muted);
+    .dash-action:hover{
+        transform:translateY(-2px);
+        border-color:rgba(77, 138, 102, .26);
+        color:inherit;
+        box-shadow:0 14px 24px rgba(28, 46, 34, .08);
     }
-    .inv-graph-badge{
-        width: 60px;
-        height: 60px;
-        border-radius: 18px;
-        margin: 0 auto 12px auto;
+    .dash-action-ico{
+        width:44px;
+        height:44px;
+        border-radius:15px;
         display:grid;
         place-items:center;
-        background: #fff;
-        border: 1px solid var(--border);
-        box-shadow: 0 12px 24px rgba(2,6,23,.06);
+        background:linear-gradient(180deg, var(--brand) 0%, var(--brand-strong) 100%);
+        color:#ffffff;
+        font-size:17px;
+        box-shadow:0 12px 22px rgba(77, 138, 102, .18);
     }
-    .inv-graph-badge i{ font-size: 22px; opacity:.85; color:#0b1220; }
-    .inv-graph-empty .t{ font-weight: 900; color:#0b1220; }
-    .inv-graph-empty .s{ margin-top: 6px; font-size: 12px; line-height: 1.35; }
+    .dash-action-title{
+        font-weight:700;
+        font-size:14px;
+        line-height:1.25;
+    }
+    .dash-action-sub{
+        margin-top:3px;
+        color:var(--muted);
+        font-size:12px;
+        line-height:1.4;
+    }
+    .dash-action-arrow{
+        color:var(--muted);
+        font-size:14px;
+    }
 
-    /* Quick actions grid */
-    .inv-qa-grid{
+    .dash-status{
         display:grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
+        gap:12px;
     }
+    .dash-status-item{
+        padding:16px 18px;
+        border-radius:22px;
+        border:1px solid var(--line);
+        background:linear-gradient(180deg, #ffffff 0%, #f7fbf5 100%);
+    }
+    .dash-status-label{
+        font-size:11px;
+        font-weight:700;
+        letter-spacing:.16em;
+        text-transform:uppercase;
+        color:var(--muted);
+    }
+    .dash-status-value{
+        margin-top:8px;
+        font-size:15px;
+        line-height:1.5;
+        color:var(--text-soft);
+    }
+    .dash-status-actions{
+        margin-top:12px;
+        display:flex;
+        gap:8px;
+        flex-wrap:wrap;
+    }
+
+    .dash-skeleton{
+        padding:20px;
+    }
+
     @media (max-width: 1199.98px){
-        .inv-qa-grid{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .dash-stats{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
+        .dash-grid{ grid-template-columns:1fr; }
     }
-    @media (max-width: 991.98px){
-        .inv-qa-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    @media (max-width: 767.98px){
+        .dash-actions{ grid-template-columns:1fr; }
     }
     @media (max-width: 575.98px){
-        .inv-qa-grid{ grid-template-columns: 1fr; }
+        .dash-stats{ grid-template-columns:1fr; }
     }
-
-    .inv-qa{
-        display:flex;
-        align-items:flex-start;
-        justify-content:space-between;
-        gap: 10px;
-        padding: 12px 12px;
-        border-radius: 16px;
-        border: 1px solid var(--border);
-        background: #fff;
-        text-decoration:none !important;
-        color: var(--text);
-        box-shadow: 0 10px 22px rgba(2,6,23,.06);
-        transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
-        min-height: 84px;
-    }
-    .inv-qa:hover{
-        transform: translateY(-2px);
-        box-shadow: 0 18px 36px rgba(2,6,23,.10);
-        border-color: rgba(2,6,23,.14);
-        color: var(--text);
-    }
-
-    .inv-qa-left{ min-width:0; }
-    .inv-qa-title{
-        font-weight: 900;
-        font-size: 13px;
-        margin: 0;
-        line-height: 1.15;
-    }
-    .inv-qa-sub{
-        margin-top: 4px;
-        font-size: 12px;
-        color: var(--muted);
-        line-height: 1.2;
-        overflow:hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        max-width: 220px;
-    }
-
-    .inv-qa-ico{
-        width: 42px;
-        height: 42px;
-        border-radius: 16px;
-        display:grid;
-        place-items:center;
-        background: rgba(2,6,23,.06);
-        border: 1px solid rgba(2,6,23,.06);
-        flex: 0 0 auto;
-        transition: transform .14s ease;
-    }
-    .inv-qa:hover .inv-qa-ico{ transform: scale(1.08); }
-    .inv-qa-ico i{ font-size: 18px; opacity:.88; color:#0b1220; }
-
-    /* Counter animation */
-    @keyframes invCountUp { from { opacity:0; transform: translateY(6px); } to { opacity:1; transform: translateY(0); } }
-    .inv-stat-value{ animation: invCountUp .35s ease forwards; }
 </style>
 
-<div class="inv-dashboard">
+<div class="dash-shell">
     @if($loading)
-        <div class="inv-card p-4">
-            <div class="inv-skeleton inv-skel-row lg" style="width:240px;"></div>
-            <div class="inv-skeleton inv-skel-row" style="width:360px;"></div>
-            <div class="inv-skeleton inv-skel-row sm" style="width:200px;"></div>
+        <div class="inv-card dash-skeleton">
+            <div class="inv-skeleton inv-skel-row lg" style="width:180px;"></div>
+            <div class="inv-skeleton inv-skel-row" style="width:320px;"></div>
+            <div class="inv-skeleton inv-skel-row sm" style="width:220px;"></div>
         </div>
-    @else
-        <div class="inv-card p-4 mb-3 inv-hero">
-            <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
-                <div>
-                    <h3 class="inv-hero-title mb-0">Overview</h3>
-                    <div class="inv-hero-sub">Welcome back, <strong>{{ $name }}</strong>.</div>
-                </div>
-                {{-- <div class="d-flex gap-2 flex-wrap">
-                    <a class="inv-pillbtn inv-pillbtn--dark" href="{{ route('inventory.items.index') }}" data-inv-loading>
-                        <i class="bi bi-box-seam"></i> Items
-                    </a>
-                    <a class="inv-pillbtn" href="{{ route('inventory.receipts.create') }}" data-inv-loading>
-                        <i class="bi bi-inbox-arrow-down"></i> Receive
-                    </a>
-                    <a class="inv-pillbtn" href="{{ route('inventory.team_assignments.index') }}" data-inv-loading>
-                        <i class="bi bi-people"></i> Team Assign
-                    </a>
-                </div> --}}
-            </div>
-        </div>
-
-        <div class="inv-stat-grid">
-            <div class="inv-stat-card inv-stat--items">
-                <div class="inv-stat-top">
-                    <div class="inv-stat-left">
-                        <p class="inv-stat-value mb-0" data-target="{{ (int)$items }}">0</p>
-                        <div class="inv-stat-label">Total Items</div>
-                    </div>
-                    <div class="inv-stat-ico" title="Items"><i class="bi bi-box-seam"></i></div>
-                </div>
-            </div>
-
-            <div class="inv-stat-card inv-stat--low">
-                <div class="inv-stat-top">
-                    <div class="inv-stat-left">
-                        <p class="inv-stat-value mb-0" data-target="{{ (int)$lowStock }}">0</p>
-                        <div class="inv-stat-label">Low Stock</div>
-                    </div>
-                    <div class="inv-stat-ico" title="Alerts"><i class="bi bi-exclamation-triangle"></i></div>
-                </div>
-            </div>
-
-            <div class="inv-stat-card inv-stat--logs">
-                <div class="inv-stat-top">
-                    <div class="inv-stat-left">
-                        <p class="inv-stat-value mb-0" data-target="{{ (int)$logs7d }}">0</p>
-                        <div class="inv-stat-label">Logs (7 days)</div>
-                    </div>
-                    <div class="inv-stat-ico" title="Logs"><i class="bi bi-journal-text"></i></div>
-                </div>
-            </div>
-
-            <div class="inv-stat-card inv-stat--teams">
-                <div class="inv-stat-top">
-                    <div class="inv-stat-left">
-                        <p class="inv-stat-value mb-0" data-target="{{ (int)$teams }}">0</p>
-                        <div class="inv-stat-label">Teams</div>
-                    </div>
-                    <div class="inv-stat-ico" title="Teams"><i class="bi bi-people"></i></div>
-                </div>
-            </div>
-        </div>
-
-        {{-- MINI ROW: links become pill buttons (no more plain anchors) --}}
-        <div class="inv-mini-row">
-            <div class="inv-mini-card">
-                <div class="inv-mini-top">
-                    <div>
-                        <p class="inv-mini-title mb-0">Low Stock Alerts</p>
-
-                        <div class="inv-mini-value">
-                            <a href="{{ route('inventory.alerts.low_stock') }}" class="inv-linkpill inv-linkpill--danger" data-inv-loading>
-                                <span class="inv-pill-ico"><i class="bi bi-bell"></i></span>
-                                Open alerts
-                            </a>
-
-                            <a href="{{ route('inventory.items.index') }}?q=" class="inv-linkpill" data-inv-loading>
-                                <span class="inv-pill-ico"><i class="bi bi-search"></i></span>
-                                Search items
-                            </a>
-                        </div>
-                    </div>
-
-                    <div class="inv-mini-ico" title="Alerts"><i class="bi bi-bell"></i></div>
-                </div>
-            </div>
-
-            <div class="inv-mini-card">
-                <div class="inv-mini-top">
-                    <div>
-                        <p class="inv-mini-title mb-0">Admin Deploy</p>
-
-                        <div class="inv-mini-value">
-                            <a href="{{ route('inventory.admin.deploy.create') }}" class="inv-linkpill inv-linkpill--soft" data-inv-loading>
-                                <span class="inv-pill-ico"><i class="bi bi-shield-lock"></i></span>
-                                Open form
-                            </a>
-
-                            <a href="{{ route('inventory.deployments.index') }}" class="inv-linkpill" data-inv-loading>
-                                <span class="inv-pill-ico"><i class="bi bi-truck"></i></span>
-                                View deployments
-                            </a>
-                        </div>
-                    </div>
-
-                    <div class="inv-mini-ico" title="Deploy"><i class="bi bi-truck"></i></div>
-                </div>
-            </div>
-
-            <div class="inv-mini-card">
-                <div class="inv-mini-top">
-                    <div>
-                        <p class="inv-mini-title mb-0">Audit Logs</p>
-
-                        <div class="inv-mini-value">
-                            <a href="{{ route('inventory.logs.index') }}" class="inv-linkpill" data-inv-loading>
-                                <span class="inv-pill-ico"><i class="bi bi-list-check"></i></span>
-                                Open logs
-                            </a>
-
-                            <a href="{{ route('inventory.movements.index') }}" class="inv-linkpill" data-inv-loading>
-                                <span class="inv-pill-ico"><i class="bi bi-arrow-left-right"></i></span>
-                                Movements
-                            </a>
-                        </div>
-                    </div>
-
-                    <div class="inv-mini-ico" title="Audit"><i class="bi bi-journal-text"></i></div>
-                </div>
-            </div>
-        </div>
-
-        <div class="inv-bottom-grid">
-            <div class="inv-panel">
-                <div class="inv-panel-head">
-                    <div>
-                        <p class="inv-panel-title mb-0">System Status / Analytics</p>
-                    </div>
-                    <a class="inv-panel-action" href="{{ route('inventory.dashboard') }}" title="Refresh" data-inv-loading>
-                        <i class="bi bi-arrow-clockwise"></i>
-                    </a>
-                </div>
-                <div class="inv-panel-body">
-                    <div class="inv-graph-box">
-                        <div class="inv-graph-empty">
-                            <div class="inv-graph-badge"><i class="bi bi-graph-up"></i></div>
-                            <div class="t">Charts coming soon</div>
-                            <div class="s">
-                                Next: stock movement over time, low-stock trend, and deployments per tech/team.
-                            </div>
-
-                            <div class="mt-3 d-flex justify-content-center gap-2 flex-wrap">
-                                <a class="inv-linkpill" href="{{ route('inventory.logs.index') }}" data-inv-loading>
-                                    <span class="inv-pill-ico"><i class="bi bi-journal-text"></i></span>
-                                    View logs
-                                </a>
-                                <a class="inv-linkpill" href="{{ route('inventory.alerts.low_stock') }}" data-inv-loading>
-                                    <span class="inv-pill-ico"><i class="bi bi-bell"></i></span>
-                                    Low stock
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="inv-panel">
-                <div class="inv-panel-head">
-                    <div>
-                        <p class="inv-panel-title mb-0">Quick actions</p>
-                    </div>
-                    <a class="inv-panel-action" href="{{ route('inventory.dashboard') }}" title="Refresh" data-inv-loading>
-                        <i class="bi bi-arrow-clockwise"></i>
-                    </a>
-                </div>
-
-                <div class="inv-panel-body">
-                    <div class="inv-qa-grid">
-                        <a class="inv-qa" href="{{ route('inventory.items.index') }}" data-inv-loading>
-                            <div class="inv-qa-left">
-                                <p class="inv-qa-title mb-0">Items</p>
-                                <div class="inv-qa-sub">Browse inventory</div>
-                            </div>
-                            <div class="inv-qa-ico"><i class="bi bi-box-seam"></i></div>
-                        </a>
-
-                        <a class="inv-qa" href="{{ route('inventory.receipts.create') }}" data-inv-loading>
-                            <div class="inv-qa-left">
-                                <p class="inv-qa-title mb-0">Receive</p>
-                                <div class="inv-qa-sub">Record stock receipt</div>
-                            </div>
-                            <div class="inv-qa-ico"><i class="bi bi-inbox-arrow-down"></i></div>
-                        </a>
-
-                        <a class="inv-qa" href="{{ route('inventory.assignments.index') }}" data-inv-loading>
-                            <div class="inv-qa-left">
-                                <p class="inv-qa-title mb-0">Tech Assign</p>
-                                <div class="inv-qa-sub">Allocate to technician</div>
-                            </div>
-                            <div class="inv-qa-ico"><i class="bi bi-person-plus"></i></div>
-                        </a>
-
-                        <a class="inv-qa" href="{{ route('inventory.team_assignments.index') }}" data-inv-loading>
-                            <div class="inv-qa-left">
-                                <p class="inv-qa-title mb-0">Team Assign</p>
-                                <div class="inv-qa-sub">Allocate to team pool</div>
-                            </div>
-                            <div class="inv-qa-ico"><i class="bi bi-people"></i></div>
-                        </a>
-
-                        <a class="inv-qa" href="{{ route('inventory.team_deployments.index') }}" data-inv-loading>
-                            <div class="inv-qa-left">
-                                <p class="inv-qa-title mb-0">Team Deploy</p>
-                                <div class="inv-qa-sub">Deploy to a site</div>
-                            </div>
-                            <div class="inv-qa-ico"><i class="bi bi-geo-alt"></i></div>
-                        </a>
-
-                        <a class="inv-qa" href="{{ route('inventory.movements.index') }}" data-inv-loading>
-                            <div class="inv-qa-left">
-                                <p class="inv-qa-title mb-0">Movements</p>
-                                <div class="inv-qa-sub">Transfers / returns</div>
-                            </div>
-                            <div class="inv-qa-ico"><i class="bi bi-arrow-left-right"></i></div>
-                        </a>
-
-                        <a class="inv-qa" href="{{ route('inventory.logs.index') }}" data-inv-loading>
-                            <div class="inv-qa-left">
-                                <p class="inv-qa-title mb-0">Logs</p>
-                                <div class="inv-qa-sub">Audit trail</div>
-                            </div>
-                            <div class="inv-qa-ico"><i class="bi bi-journal-text"></i></div>
-                        </a>
-
-                        <a class="inv-qa" href="{{ route('inventory.alerts.low_stock') }}" data-inv-loading>
-                            <div class="inv-qa-left">
-                                <p class="inv-qa-title mb-0">Alerts</p>
-                                <div class="inv-qa-sub">Low stock review</div>
-                            </div>
-                            <div class="inv-qa-ico"><i class="bi bi-bell"></i></div>
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const animateCounter = (el, target, duration = 900) => {
-                target = parseInt(target || '0', 10) || 0;
-                const frames = Math.max(1, Math.floor(duration / 16));
-                const inc = target / frames;
-                let cur = 0;
-                let step = 0;
-
-                const t = setInterval(() => {
-                    step++;
-                    cur += inc;
-                    if (step >= frames) {
-                        el.textContent = String(target);
-                        clearInterval(t);
-                    } else {
-                        el.textContent = String(Math.floor(cur));
-                    }
-                }, 16);
-            };
-
-            document.querySelectorAll('.inv-stat-value[data-target]').forEach((el, idx) => {
-                const target = el.dataset.target || '0';
-                setTimeout(() => animateCounter(el, target, 900), idx * 80);
-            });
-        });
-        </script>
     @endif
+
+    <section class="dash-stats">
+        <article class="inv-card dash-stat">
+            <div class="dash-stat-head">
+                <div>
+                    <div class="dash-stat-label">Items</div>
+                    <div class="dash-stat-value">{{ number_format($items) }}</div>
+                </div>
+                <div class="dash-stat-ico"><i class="bi bi-box-seam"></i></div>
+            </div>
+            <div class="dash-stat-sub">Tracked stock lines.</div>
+        </article>
+
+        <article class="inv-card dash-stat">
+            <div class="dash-stat-head">
+                <div>
+                    <div class="dash-stat-label">Low Stock</div>
+                    <div class="dash-stat-value">{{ number_format($lowStock) }}</div>
+                </div>
+                <div class="dash-stat-ico"><i class="bi bi-exclamation-triangle"></i></div>
+            </div>
+            <div class="dash-stat-sub">Needs restock.</div>
+        </article>
+
+        <article class="inv-card dash-stat">
+            <div class="dash-stat-head">
+                <div>
+                    <div class="dash-stat-label">Teams</div>
+                    <div class="dash-stat-value">{{ number_format($teams) }}</div>
+                </div>
+                <div class="dash-stat-ico"><i class="bi bi-people"></i></div>
+            </div>
+            <div class="dash-stat-sub">Active field groups.</div>
+        </article>
+
+        <article class="inv-card dash-stat">
+            <div class="dash-stat-head">
+                <div>
+                    <div class="dash-stat-label">Logs, 7 Days</div>
+                    <div class="dash-stat-value">{{ number_format($logs7d) }}</div>
+                </div>
+                <div class="dash-stat-ico"><i class="bi bi-journal-text"></i></div>
+            </div>
+            <div class="dash-stat-sub">Recent movement trail.</div>
+        </article>
+    </section>
+
+    <section class="dash-grid">
+        <article class="inv-card dash-panel">
+            <div class="dash-panel-head">
+                <div>
+                    <h2 class="dash-panel-title">Quick Actions</h2>
+                    <div class="dash-panel-sub">Open the main work areas.</div>
+                </div>
+            </div>
+            <div class="dash-panel-body">
+                <div class="dash-actions">
+                    @if($can('receipts.manage'))
+                        <a class="dash-action" href="{{ route('inventory.receipts.create') }}" data-inv-loading>
+                            <div class="dash-action-ico"><i class="bi bi-inbox-arrow-down"></i></div>
+                            <div>
+                                <div class="dash-action-title">Receive</div>
+                                <div class="dash-action-sub">Add incoming stock.</div>
+                            </div>
+                            <div class="dash-action-arrow"><i class="bi bi-arrow-up-right"></i></div>
+                        </a>
+                    @endif
+
+                    @if($can('items.view'))
+                        <a class="dash-action" href="{{ route('inventory.items.index') }}" data-inv-loading>
+                            <div class="dash-action-ico"><i class="bi bi-box-seam"></i></div>
+                            <div>
+                                <div class="dash-action-title">Items</div>
+                                <div class="dash-action-sub">Manage catalog lines.</div>
+                            </div>
+                            <div class="dash-action-arrow"><i class="bi bi-arrow-up-right"></i></div>
+                        </a>
+                    @endif
+
+                    @if($can('assignments.view'))
+                        <a class="dash-action" href="{{ route('inventory.assignments.index') }}" data-inv-loading>
+                            <div class="dash-action-ico"><i class="bi bi-person-check"></i></div>
+                            <div>
+                                <div class="dash-action-title">Assignments</div>
+                                <div class="dash-action-sub">Allocate to techs.</div>
+                            </div>
+                            <div class="dash-action-arrow"><i class="bi bi-arrow-up-right"></i></div>
+                        </a>
+                    @endif
+
+                    @if($can('deployments.view'))
+                        <a class="dash-action" href="{{ route('inventory.deployments.index') }}" data-inv-loading>
+                            <div class="dash-action-ico"><i class="bi bi-geo-alt"></i></div>
+                            <div>
+                                <div class="dash-action-title">Deployments</div>
+                                <div class="dash-action-sub">Review site installs.</div>
+                            </div>
+                            <div class="dash-action-arrow"><i class="bi bi-arrow-up-right"></i></div>
+                        </a>
+                    @endif
+
+                    @if($can('routers.view'))
+                        <a class="dash-action" href="{{ route('inventory.routers.index') }}" data-inv-loading>
+                            <div class="dash-action-ico"><i class="bi bi-hdd-network"></i></div>
+                            <div>
+                                <div class="dash-action-title">Routers</div>
+                                <div class="dash-action-sub">Query Skybrix data.</div>
+                            </div>
+                            <div class="dash-action-arrow"><i class="bi bi-arrow-up-right"></i></div>
+                        </a>
+                    @endif
+
+                    @if($can('movements.view'))
+                        <a class="dash-action" href="{{ route('inventory.movements.index') }}" data-inv-loading>
+                            <div class="dash-action-ico"><i class="bi bi-arrow-left-right"></i></div>
+                            <div>
+                                <div class="dash-action-title">Transfers</div>
+                                <div class="dash-action-sub">Move stock fast.</div>
+                            </div>
+                            <div class="dash-action-arrow"><i class="bi bi-arrow-up-right"></i></div>
+                        </a>
+                    @endif
+                </div>
+            </div>
+        </article>
+
+        <article class="inv-card dash-panel">
+            <div class="dash-panel-head">
+                <div>
+                    <h2 class="dash-panel-title">Status</h2>
+                    <div class="dash-panel-sub">Current checks.</div>
+                </div>
+            </div>
+            <div class="dash-panel-body">
+                <div class="dash-status">
+                    <div class="dash-status-item">
+                        <div class="dash-status-label">Restock</div>
+                        <div class="dash-status-value">
+                            @if($lowStock > 0)
+                                {{ $lowStock }} item{{ $lowStock === 1 ? '' : 's' }} need attention.
+                            @else
+                                No low-stock items.
+                            @endif
+                        </div>
+                        @if($can('alerts.view'))
+                            <div class="dash-status-actions">
+                                <a class="btn btn-sm btn-outline-dark" href="{{ route('inventory.alerts.low_stock') }}" data-inv-loading>Open Alerts</a>
+                            </div>
+                        @endif
+                    </div>
+
+                    <div class="dash-status-item">
+                        <div class="dash-status-label">Audit</div>
+                        <div class="dash-status-value">{{ $logs7d }} log entr{{ $logs7d === 1 ? 'y' : 'ies' }} in the last 7 days.</div>
+                        @if($can('logs.view'))
+                            <div class="dash-status-actions">
+                                <a class="btn btn-sm btn-outline-dark" href="{{ route('inventory.logs.index') }}" data-inv-loading>Open Logs</a>
+                            </div>
+                        @endif
+                    </div>
+
+                    <div class="dash-status-item">
+                        <div class="dash-status-label">Teams</div>
+                        <div class="dash-status-value">{{ $teams }} team{{ $teams === 1 ? '' : 's' }} available for allocation and deployment.</div>
+                        @if($can('teams.view'))
+                            <div class="dash-status-actions">
+                                <a class="btn btn-sm btn-outline-dark" href="{{ route('inventory.teams.index') }}" data-inv-loading>Open Teams</a>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </article>
+    </section>
 </div>
 @endsection

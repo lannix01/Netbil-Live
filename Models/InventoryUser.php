@@ -14,10 +14,16 @@ class InventoryUser extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'phone_no',
         'password',
         'inventory_role',
+        'inventory_permissions',
         'inventory_enabled',
         'inventory_force_password_change',
+        'last_login_at',
+        'last_login_ip',
+        'last_login_user_agent',
+        'login_sms_sent_at',
         'department_id',
     ];
 
@@ -27,10 +33,13 @@ class InventoryUser extends Authenticatable
     ];
 
     protected $casts = [
-    'inventory_enabled' => 'boolean',
-    'inventory_force_password_change' => 'boolean',
-    'inventory_password_changed_at' => 'datetime',
-];
+        'inventory_permissions' => 'array',
+        'inventory_enabled' => 'boolean',
+        'inventory_force_password_change' => 'boolean',
+        'inventory_password_changed_at' => 'datetime',
+        'last_login_at' => 'datetime',
+        'login_sms_sent_at' => 'datetime',
+    ];
 
 
     public function department()
