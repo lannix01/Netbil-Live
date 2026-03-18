@@ -964,12 +964,17 @@ class TokenDueNotificationService
             ->selectRaw('hostel_id, MAX(date) as last_payment_date')
             ->groupBy('hostel_id');
 
-        $hostels = Hostel::query()
+        $hostelsQuery = Hostel::query()
             ->leftJoinSub($lastPaySub, 'lp', function ($join) {
                 $join->on('lp.hostel_id', '=', 'petty_hostels.id');
             })
-            ->select('petty_hostels.*', 'lp.last_payment_date')
-            ->get();
+            ->select('petty_hostels.*', 'lp.last_payment_date');
+
+        if (Schema::hasColumn('petty_hostels', 'agreement_terminated_at')) {
+            $hostelsQuery->whereNull('petty_hostels.agreement_terminated_at');
+        }
+
+        $hostels = $hostelsQuery->get();
 
         $rows = [];
         foreach ($hostels as $h) {

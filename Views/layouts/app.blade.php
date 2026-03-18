@@ -1001,6 +1001,8 @@
     });
 </script>
 
+@include('partials.back_iconize')
+
 @stack('scripts')
 </body>
 </html>

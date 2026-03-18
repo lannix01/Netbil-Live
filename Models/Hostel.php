@@ -15,6 +15,10 @@ class Hostel extends Model
         'ont_site_sn',
         'agreement_type',
         'agreement_label',
+        'agreement_terminated_at',
+        'agreement_termination_reason',
+        'agreement_termination_notes',
+        'agreement_transfer_hostel_id',
         'meter_no',
         'phone_no',
         'no_of_routers',
@@ -27,6 +31,7 @@ class Hostel extends Model
         'no_of_routers' => 'integer',
         'amount_due' => 'float',
         'ont_merged' => 'boolean',
+        'agreement_terminated_at' => 'datetime',
     ];
 
     public function pendingCredits()

@@ -80,6 +80,8 @@ class TokenHostelController extends Controller
                     $qq->orderBy('hostel_name');
                 }
             })
+
+            
             ->paginate($perPage)
             ->withQueryString();
 
